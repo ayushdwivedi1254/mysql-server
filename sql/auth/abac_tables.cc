@@ -41,6 +41,8 @@ class THD;
 #define MYSQL_POLICY_FIELD_INSERT_PRIV 2
 #define MYSQL_POLICY_FIELD_UPDATE_PRIV 3
 #define MYSQL_POLICY_FIELD_DELETE_PRIV 4
+#define MYSQL_POLICY_FIELD_CREATE_VIEW_PRIV 5
+#define MYSQL_POLICY_FIELD_DROP_PRIV 6
 
 #define MYSQL_POLICY_USER_AVAL_FIELD_RULE_NAME 0
 #define MYSQL_POLICY_USER_AVAL_FIELD_ATTRIB_NAME 1
@@ -80,6 +82,8 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 	char insert_field = (privs & INSERT_ACL) ? 'Y' : 'N';
 	char update_field = (privs & UPDATE_ACL) ? 'Y' : 'N';
 	char delete_field = (privs & DELETE_ACL) ? 'Y' : 'N';
+	char create_view_field = (privs & CREATE_VIEW_ACL) ? 'Y' : 'N';
+	char drop_field = (privs & CREATE_VIEW_ACL) ? 'Y' : 'N';
 
   table->field[MYSQL_POLICY_FIELD_SELECT_PRIV]->store(
 								&select_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
@@ -89,6 +93,10 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 								&update_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
   table->field[MYSQL_POLICY_FIELD_DELETE_PRIV]->store(
 								&delete_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
+  table->field[MYSQL_POLICY_FIELD_CREATE_VIEW_PRIV]->store(
+								&create_view_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
+  table->field[MYSQL_POLICY_FIELD_DROP_PRIV]->store(
+								&drop_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
 
 	if (!delete_option)
 		ret = table->file->ha_write_row(table->record[0]);

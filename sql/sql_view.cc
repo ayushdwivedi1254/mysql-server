@@ -333,6 +333,8 @@ bool create_view_precheck(THD *thd, TABLE_LIST *tables, TABLE_LIST *view,
   bool res = true;
   DBUG_TRACE;
 
+  std::cout<<"\n\n\n I am here \n\n\n\n";
+
   /*
     Privilege check for view creation:
     - user has CREATE VIEW privilege on view table

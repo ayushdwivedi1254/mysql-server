@@ -3959,10 +3959,14 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       char *insert_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_INSERT_PRIV]);
       char *delete_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_DELETE_PRIV]);
       char *update_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_UPDATE_PRIV]);
+      char *create_view_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_CREATE_VIEW_PRIV]);
+      char *drop_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_DROP_PRIV]);
       if (select_priv[0] == 'Y') access |= SELECT_ACL;
       if (insert_priv[0] == 'Y') access |= INSERT_ACL;
       if (delete_priv[0] == 'Y') access |= DELETE_ACL;
       if (update_priv[0] == 'Y') access |= UPDATE_ACL;
+      if (create_view_priv[0] == 'Y') access |= CREATE_VIEW_ACL;
+      if (drop_priv[0] == 'Y') access |= DROP_ACL;
       abac_rule->set_access(access);
       abac_rule_hash->emplace(rule_name, abac_rule);
     }

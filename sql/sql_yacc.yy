@@ -16810,6 +16810,14 @@ privilege:
           {
             $$ = DELETE_ACL;
           }
+          | CREATE VIEW_SYM
+          {
+            $$ = CREATE_VIEW_ACL;
+          }
+          | DROP
+          {
+            $$ = DROP_ACL;
+          }
         ;
 
 opt_retain_current_password:
