@@ -729,6 +729,11 @@ void ABAC_RULE::set_rule_name(string name_arg) {
 void ABAC_RULE::set_access(int access_arg) {
   access = access_arg;
 }
+
+void ABAC_RULE::set_db(std::string db_name_arg) {
+  db_name = db_name_arg;
+}
+
 void ABAC_RULE::set_user_attribute(std::string attrib, std::string value) {
   user_attrib_map[attrib] = value;
 }
@@ -4008,6 +4013,21 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
     if (read_rec_errcode > 0) goto end;
   }
 
+    /* Processing policy_db table */
+  if (tables[7].table) {
+    iterator = init_table_iterator(thd, table = tables[7].table, false, false);
+    if (iterator == nullptr) goto end;
+    table->use_all_columns();
+    while (!(read_rec_errcode = iterator->Read())) {
+      string rule_name = string(get_field(&abac_memory, table->field[MYSQL_POLICY_DB_RULE_NAME]));
+      string db_name = string(get_field(&abac_memory, 
+          table->field[MYSQL_POLICY_DB_DB_NAME]));
+      (*abac_rule_hash)[rule_name]->set_db(db_name);
+    }
+    iterator.reset();
+    if (read_rec_errcode > 0) goto end;
+  }
+
   for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
     for (auto user_hash_it = acl_user_abac_hash->begin(); 
         user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
@@ -4126,7 +4146,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   /* Don't do anything if running with --skip-grant-tables */
   if (!initialized) return false;
 
-  TABLE_LIST tables[7] = {
+  TABLE_LIST tables[8] = {
 
       /*
         Acquiring strong MDL lock allows to avoid deadlock and timeout errors
@@ -4144,7 +4164,9 @@ bool abac_reload(THD *thd, bool mdl_locked) {
       
       TABLE_LIST("mysql", "policy_user_aval", TL_READ, MDL_SHARED_READ_ONLY),
       
-      TABLE_LIST("mysql", "policy_object_aval", TL_READ, MDL_SHARED_READ_ONLY)};
+      TABLE_LIST("mysql", "policy_object_aval", TL_READ, MDL_SHARED_READ_ONLY),
+
+      TABLE_LIST("mysql", "policy_db", TL_READ, MDL_SHARED_READ_ONLY)};
 
   tables[0].next_local = tables[0].next_global = tables + 1;
   tables[1].next_local = tables[1].next_global = tables + 2;
@@ -4152,13 +4174,14 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   tables[3].next_local = tables[3].next_global = tables + 4;
   tables[4].next_local = tables[4].next_global = tables + 5;
   tables[5].next_local = tables[5].next_global = tables + 6;
+  tables[6].next_local = tables[6].next_global = tables + 7;
   tables[0].open_type = tables[1].open_type = tables[2].open_type =
       tables[3].open_type = tables[4].open_type = 
-          tables[5].open_type = tables[6].open_type =
+          tables[5].open_type = tables[6].open_type = tables[7].open_type =
             OT_BASE_ONLY;
   tables[0].open_strategy = tables[1].open_strategy = tables[2].open_strategy =
       tables[3].open_strategy = tables[4].open_strategy = 
-          tables[5].open_strategy = tables[6].open_strategy = 
+          tables[5].open_strategy = tables[6].open_strategy = tables[7].open_strategy = 
               TABLE_LIST::OPEN_IF_EXISTS;
 
   if (open_and_lock_tables(thd, tables, flags)) {

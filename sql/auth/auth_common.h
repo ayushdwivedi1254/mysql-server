@@ -385,6 +385,7 @@ enum mysql_object_attrib_val_table_field {
 
 enum mysql_policy {
   MYSQL_POLICY_RULE_NAME = 0,
+  MYSQL_POLICY_DB,
   MYSQL_POLICY_SELECT_PRIV,
   MYSQL_POLICY_INSERT_PRIV,
   MYSQL_POLICY_UPDATE_PRIV,
@@ -392,6 +393,12 @@ enum mysql_policy {
   MYSQL_POLICY_CREATE_VIEW_PRIV,
   MYSQL_POLICY_DROP_PRIV,
   MYSQL_POLICY_FIELD_COUNT
+};
+
+enum mysql_policy_db {
+  MYSQL_POLICY_DB_RULE_NAME = 0,
+  MYSQL_POLICY_DB_DB_NAME,
+  MYSQL_POLICY_DB_FIELD_COUNT
 };
 
 enum mysql_policy_user_aval_table_field {
@@ -911,6 +918,7 @@ bool mysql_revoke_role(THD *thd, const List<LEX_USER> *users,
 bool mysql_create_rule(THD *thd, std::string rule_name, int privs, 
       attribute_value_list user_attributes, 
           attribute_value_list object_attributes);
+bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, int privs, attribute_value_list user_attributes);
 bool mysql_delete_rule(THD *thd, std::string rule_name);
 bool mysql_create_user_attribute(THD *thd, std::string user_attrib);
 bool mysql_create_object_attribute(THD *thd, std::string object_attrib);

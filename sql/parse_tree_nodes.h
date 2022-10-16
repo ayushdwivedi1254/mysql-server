@@ -2889,7 +2889,16 @@ class PT_create_rule final : public Parse_tree_root {
       attribute_value_list user_attributes, 
           attribute_value_list object_attributes) : sql_cmd(rule_name, privs,
               user_attributes, object_attributes) {}
-  
+
+  Sql_cmd *make_cmd(THD *thd) override;
+};
+
+class PT_create_rule_db final : public Parse_tree_root {
+  Sql_cmd_create_rule_db sql_cmd;
+  public:
+  PT_create_rule_db(string rule_name, string db_name, 
+    int privs, attribute_value_list user_attributes ) : sql_cmd(rule_name, db_name, privs, user_attributes) {}
+
   Sql_cmd *make_cmd(THD *thd) override;
 };
 

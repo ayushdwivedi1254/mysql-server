@@ -2373,6 +2373,7 @@ uint sp_get_flags_for_command(LEX *lex) {
     case SQLCOM_ALTER_INSTANCE:
     case SQLCOM_CREATE_ROLE:
     case SQLCOM_CREATE_RULE:
+    case SQLCOM_CREATE_RULE_DB:
     case SQLCOM_DELETE_RULE:
     case SQLCOM_CREATE_USER_ATTRIBUTE:
     case SQLCOM_CREATE_OBJECT_ATTRIBUTE:

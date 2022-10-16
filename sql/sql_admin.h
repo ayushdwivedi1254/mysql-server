@@ -362,8 +362,10 @@ class Sql_cmd_create_rule : public Sql_cmd {
   int privs;
   attribute_value_list user_attrib_map;
   attribute_value_list object_attrib_map;
+  LEX_CSTRING db;
   public:
-    explicit Sql_cmd_create_rule(std::string rule_name_arg,int privs_arg,
+    explicit Sql_cmd_create_rule(std::string rule_name_arg,
+                                int privs_arg,
                                 attribute_value_list user_attrib_map_arg,
                                 attribute_value_list object_attrib_map_arg) 
         : rule_name(rule_name_arg),
@@ -374,6 +376,27 @@ class Sql_cmd_create_rule : public Sql_cmd {
     bool execute(THD *thd) override;
     enum_sql_command sql_command_code() const override {
       return SQLCOM_CREATE_RULE;
+    }
+};
+
+class Sql_cmd_create_rule_db : public Sql_cmd {
+  std::string rule_name;
+  std::string db_name;
+  int privs;
+  attribute_value_list user_attrib_map;
+  public:
+    explicit Sql_cmd_create_rule_db(std::string rule_name_arg,
+                                std::string db_name_arg,
+                                int privs_arg,
+                                attribute_value_list user_attrib_map_arg) 
+        : rule_name(rule_name_arg),
+          db_name(db_name_arg),
+          privs(privs_arg),
+          user_attrib_map(user_attrib_map_arg) {}
+
+    bool execute(THD *thd) override;
+    enum_sql_command sql_command_code() const override {
+      return SQLCOM_CREATE_RULE_DB;
     }
 };
 

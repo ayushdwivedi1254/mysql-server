@@ -94,7 +94,7 @@
 #include "violite.h"
 
 /* Acl table names. Keep in sync with ACL_TABLES */
-static const int MAX_ACL_TABLE_NAMES = 17;
+static const int MAX_ACL_TABLE_NAMES = 18;
 static_assert(MAX_ACL_TABLE_NAMES == ACL_TABLES::LAST_ENTRY,
               "Keep number of table names in sync with ACL table enum");
 
@@ -107,7 +107,7 @@ static const char *ACL_TABLE_NAMES[MAX_ACL_TABLE_NAMES] = {
     "user_attributes",    "user_attrib_val", 
     "object_attributes",  "object_attrib_val",
     "policy",             "policy_user_aval",
-    "policy_object_aval"};
+    "policy_object_aval", "policy_db"};
 
 static const TABLE_FIELD_TYPE mysql_db_table_fields[MYSQL_DB_FIELD_COUNT] = {
     {{STRING_WITH_LEN("Host")}, {STRING_WITH_LEN("char(255)")}, {nullptr, 0}},
@@ -576,6 +576,16 @@ static const TABLE_FIELD_TYPE
           {nullptr, 0}}
     };
 
+static const TABLE_FIELD_TYPE 
+    mysql_policy_db_table_fields[MYSQL_POLICY_DB_FIELD_COUNT] = {
+        {{STRING_WITH_LEN("Rule_name")},
+          {STRING_WITH_LEN("varchar(20)")},
+          {nullptr, 0}},
+        {{STRING_WITH_LEN("DB_name")},
+          {STRING_WITH_LEN("varchar(10)")},
+          {nullptr, 0}}
+    };
+
 /** keep in sync with @ref ACL_TABLES */
 const TABLE_FIELD_DEF Acl_table_intact::mysql_acl_table_defs[] = {
     {MYSQL_USER_FIELD_COUNT, mysql_user_table_fields},
@@ -594,7 +604,8 @@ const TABLE_FIELD_DEF Acl_table_intact::mysql_acl_table_defs[] = {
     {MYSQL_OBJECT_ATTRIB_VAL_FIELD_COUNT, mysql_object_attrib_val_table_fields},
     {MYSQL_POLICY_FIELD_COUNT, mysql_policy_table_fields},
     {MYSQL_POLICY_USER_AVAL_FIELD_COUNT, mysql_policy_user_aval_table_fields},
-    {MYSQL_POLICY_OBJECT_AVAL_FIELD_COUNT, mysql_policy_object_aval_table_fields}};
+    {MYSQL_POLICY_OBJECT_AVAL_FIELD_COUNT, mysql_policy_object_aval_table_fields},
+    {MYSQL_POLICY_DB_FIELD_COUNT, mysql_policy_db_table_fields}};
 
 static bool acl_tables_setup_for_write_and_acquire_mdl(THD *thd,
                                                        TABLE_LIST *tables);

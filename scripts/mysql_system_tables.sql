@@ -235,7 +235,7 @@ EXECUTE stmt;
 DROP PREPARE stmt;
 
 SET @cmd = "CREATE TABLE IF NOT EXISTS policy ( 
-	Rule_name varchar(20) PRIMARY KEY, 
+	Rule_name varchar(20) PRIMARY KEY,
 	Select_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Insert_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
 	Update_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
@@ -247,6 +247,18 @@ SET @str = CONCAT(@cmd, " ENCRYPTION='", @is_mysql_encrypted, "'");
 PREPARE stmt FROM @str;
 EXECUTE stmt;
 DROP PREPARE stmt;
+
+SET @cmd = "CREATE TABLE IF NOT EXISTS policy_db ( 
+  Rule_name varchar(20), 
+  Db_name varchar(64) binary DEFAULT '' NOT NULL,
+  PRIMARY KEY (Rule_name, Db_name),
+  FOREIGN KEY (Rule_name) REFERENCES policy(Rule_name) ON DELETE CASCADE
+) engine=InnoDB STATS_PERSISTENT=0 CHARACTER SET utf8 COLLATE utf8_bin comment='Policy definitions for user attributes' ROW_FORMAT=DYNAMIC TABLESPACE=mysql";
+SET @str = CONCAT(@cmd, " ENCRYPTION='", @is_mysql_encrypted, "'");
+PREPARE stmt FROM @str;
+EXECUTE stmt;
+DROP PREPARE stmt;
+
 
 SET @cmd = "CREATE TABLE IF NOT EXISTS policy_user_aval ( 
 	Rule_name varchar(20), 

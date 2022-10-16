@@ -44,6 +44,9 @@ class THD;
 #define MYSQL_POLICY_FIELD_CREATE_VIEW_PRIV 5
 #define MYSQL_POLICY_FIELD_DROP_PRIV 6
 
+#define MYSQL_POLICY_DB_RULE_NAME 0
+#define MYSQL_POLICY_DB_DB_NAME 1
+
 #define MYSQL_POLICY_USER_AVAL_FIELD_RULE_NAME 0
 #define MYSQL_POLICY_USER_AVAL_FIELD_ATTRIB_NAME 1
 #define MYSQL_POLICY_USER_AVAL_FIELD_VALUE 2
@@ -65,7 +68,7 @@ class THD;
 #define MYSQL_OBJECT_ATTRIB_VAL_ATTRIB_NAME 2
 #define MYSQL_OBJECT_ATTRIB_VAL_ATTRIB_VAL 3
 
-bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name, 
+bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 												int privs, bool delete_option) {
   DBUG_TRACE;
   int ret = 0;
@@ -78,6 +81,8 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 
   table->field[MYSQL_POLICY_FIELD_RULE_NAME]->store(
 								rule_name.c_str(), rule_name.size(), system_charset_info);
+
+
 	char select_field = (privs & SELECT_ACL) ? 'Y' : 'N';
 	char insert_field = (privs & INSERT_ACL) ? 'Y' : 'N';
 	char update_field = (privs & UPDATE_ACL) ? 'Y' : 'N';
@@ -112,6 +117,36 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 	}
 	return ret != 0;
 }
+
+bool modify_policy_db_in_table(THD *thd, TABLE *table, string rule_name, 
+									string db_name, bool delete_option) {
+	DBUG_TRACE;
+  int ret = 0;
+
+  Acl_table_intact table_intact(thd);
+
+  if (table_intact.check(table, ACL_TABLES::TABLE_POLICY_DB)) return true;
+
+  table->use_all_columns();
+
+	table->field[MYSQL_POLICY_DB_RULE_NAME]->store(rule_name.c_str(), rule_name.size(), system_charset_info);
+	table->field[MYSQL_POLICY_DB_DB_NAME]->store(db_name.c_str(), db_name.size(), system_charset_info);
+
+	if (!delete_option)
+		ret = table->file->ha_write_row(table->record[0]);
+	else {
+		uchar user_key[MAX_KEY_LENGTH];
+		key_copy(user_key, table->record[0], table->key_info,
+           table->key_info->key_length);
+		ret = table->file->ha_index_read_idx_map(table->record[0], 0, user_key,
+                                           HA_WHOLE_KEY, HA_READ_KEY_EXACT);
+		if (ret != HA_ERR_KEY_NOT_FOUND) {
+			ret = table->file->ha_delete_row(table->record[0]);
+		}
+	}
+	return ret != 0;
+}
+
 
 bool modify_policy_user_aval_in_table(THD *thd, TABLE *table, string rule_name, 
 									string attrib, string value, bool delete_option) {

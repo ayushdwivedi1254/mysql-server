@@ -3430,6 +3430,12 @@ create_rule_stmt:
           {
             $$ = NEW_PTN PT_create_rule(string($3.str), $5, $10, $16);
           }
+          |
+          CREATE RULE_SYM ident FOR_SYM privilege_list
+          OF_SYM USER ATTRIBUTE_SYM '(' user_attribute_list ')' ON_SYM schema
+          {
+            $$ = NEW_PTN PT_create_rule_db(string($3.str), string($13.str), $5, $10);
+          }
         ;
 
 user_attribute_list:

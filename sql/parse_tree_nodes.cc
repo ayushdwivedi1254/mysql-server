@@ -4082,6 +4082,11 @@ Sql_cmd *PT_create_rule::make_cmd(THD *thd) {
   return &sql_cmd;
 }
 
+Sql_cmd *PT_create_rule_db::make_cmd(THD *thd) {
+  thd->lex->sql_command = SQLCOM_CREATE_RULE_DB;
+  return &sql_cmd;
+}
+
 Sql_cmd *PT_delete_rule::make_cmd(THD *thd) {
   thd->lex->sql_command = SQLCOM_DELETE_RULE;
   return &sql_cmd;
