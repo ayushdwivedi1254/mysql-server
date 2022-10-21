@@ -7700,7 +7700,7 @@ bool mysql_create_rule(THD *thd, std::string rule_name, int privs,
   return errors;
 }
 
-bool mysql_create_rule_db(THD *thd, std::string rule_name, LEX_CSTRING db_name, int privs, attribute_value_list user_attributes) {
+bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, int privs, attribute_value_list user_attributes) {
   DBUG_TRACE;
   int ret;
   Save_and_Restore_binlog_format_state binlog_format_state(thd);
@@ -7765,7 +7765,7 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, LEX_CSTRING db_name, 
     table = tables[ACL_TABLES::TABLE_POLICY_DB].table;
     // Insert entries into policy_db table
       ret |= modify_policy_db_in_table(thd, table, rule_name, 
-              db_name.str , false);
+              db_name , false);
     if (ret) {
       errors = true;
       // std::cout<<"Failed to add db to policy_db\n";

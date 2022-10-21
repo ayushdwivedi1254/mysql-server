@@ -581,7 +581,7 @@ static const TABLE_FIELD_TYPE
         {{STRING_WITH_LEN("Rule_name")},
           {STRING_WITH_LEN("varchar(20)")},
           {nullptr, 0}},
-        {{STRING_WITH_LEN("DB_name")},
+        {{STRING_WITH_LEN("Db_name")},
           {STRING_WITH_LEN("varchar(10)")},
           {nullptr, 0}}
     };

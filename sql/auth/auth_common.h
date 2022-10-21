@@ -385,7 +385,6 @@ enum mysql_object_attrib_val_table_field {
 
 enum mysql_policy {
   MYSQL_POLICY_RULE_NAME = 0,
-  MYSQL_POLICY_DB,
   MYSQL_POLICY_SELECT_PRIV,
   MYSQL_POLICY_INSERT_PRIV,
   MYSQL_POLICY_UPDATE_PRIV,
