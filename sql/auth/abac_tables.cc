@@ -43,6 +43,7 @@ class THD;
 #define MYSQL_POLICY_FIELD_DELETE_PRIV 4
 #define MYSQL_POLICY_FIELD_CREATE_VIEW_PRIV 5
 #define MYSQL_POLICY_FIELD_DROP_PRIV 6
+#define MYSQL_POLICY_FIELD_DB_LEVEL 7
 
 #define MYSQL_POLICY_DB_RULE_NAME 0
 #define MYSQL_POLICY_DB_DB_NAME 1
@@ -69,7 +70,7 @@ class THD;
 #define MYSQL_OBJECT_ATTRIB_VAL_ATTRIB_VAL 3
 
 bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
-												int privs, bool delete_option) {
+												int privs, bool db_level_option, bool delete_option) {
   DBUG_TRACE;
   int ret = 0;
 
@@ -88,7 +89,8 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 	char update_field = (privs & UPDATE_ACL) ? 'Y' : 'N';
 	char delete_field = (privs & DELETE_ACL) ? 'Y' : 'N';
 	char create_view_field = (privs & CREATE_VIEW_ACL) ? 'Y' : 'N';
-	char drop_field = (privs & CREATE_VIEW_ACL) ? 'Y' : 'N';
+	char drop_field = (privs & DROP_ACL) ? 'Y' : 'N';
+	char db_level = (db_level_option) ? 'Y' : 'N';
 
   table->field[MYSQL_POLICY_FIELD_SELECT_PRIV]->store(
 								&select_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
@@ -102,6 +104,8 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 								&create_view_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
   table->field[MYSQL_POLICY_FIELD_DROP_PRIV]->store(
 								&drop_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
+  table->field[MYSQL_POLICY_FIELD_DB_LEVEL]->store(
+								&db_level, 1, system_charset_info, CHECK_FIELD_IGNORE); 
 
 	if (!delete_option)
 		ret = table->file->ha_write_row(table->record[0]);

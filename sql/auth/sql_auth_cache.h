@@ -380,14 +380,25 @@ class ABAC_RULE {
     int access;
     user_attribute_map user_attrib_map;
     object_attribute_map object_attrib_map;
+    void set_rule_name(std::string name_arg);
+    void set_access(int access_arg);
+    void set_user_attribute(std::string attrib, std::string value);
+    void set_object_attribute(std::string attrib, std::string value);
+    std::string get_user_attribute_value(std::string attrib);
+    std::string get_object_attribute_value(std::string attrib);
+};
+
+class ABAC_RULE_DB {
+  public:
+    std::string rule_name;
+    int access;
+    user_attribute_map user_attrib_map;
     std::string db_name;
     void set_rule_name(std::string name_arg);
     void set_access(int access_arg);
     void set_db(std::string db_name_arg);
     void set_user_attribute(std::string attrib, std::string value);
-    void set_object_attribute(std::string attrib, std::string value);
     std::string get_user_attribute_value(std::string attrib);
-    std::string get_object_attribute_value(std::string attrib);
 };
 
 class ACL_PROXY_USER : public ACL_ACCESS {
@@ -519,11 +530,10 @@ class ABAC_TABLE_GRANT {
   public:
     std::string db_name;
     std::string user;
-    std::string table_name;
     ACL_HOST_AND_IP host;
     ulong privs;
     std::string hash_key;
-    ABAC_TABLE_GRANT(std::string db_arg, std::string user_arg, std::string table_arg, const char *host_arg);
+    ABAC_TABLE_GRANT(std::string db_arg, std::string user_arg,  const char *host_arg);
 };
 /*
  * A default/no-arg constructor is useful with containers-of-containers
@@ -569,6 +579,8 @@ extern malloc_unordered_map<std::string, GRANT_TABLE*> *abac_table_priv_hash;
 extern malloc_unordered_map<std::string, ACL_USER_ABAC*> *acl_user_abac_hash;
 extern malloc_unordered_map<std::string, ABAC_OBJECT*> *abac_object_hash;
 extern malloc_unordered_map<std::string, ABAC_RULE*> *abac_rule_hash;
+extern malloc_unordered_map<std::string, ABAC_TABLE_GRANT*> *abac_table_db_priv_hash;
+extern malloc_unordered_map<std::string, ABAC_RULE_DB*> *abac_rule_db_hash;
 extern malloc_unordered_set<std::string> *user_attribute_set;
 extern malloc_unordered_set<std::string> *object_attribute_set;
 

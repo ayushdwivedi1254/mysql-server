@@ -7627,6 +7627,11 @@ bool mysql_create_rule(THD *thd, std::string rule_name, int privs,
       errors = true;
       goto end;
     }
+    if (abac_rule_db_hash->count(rule_name)) {
+      my_error(ER_INVALID_RULE_NAME, MYF(0));
+      errors = true;
+      goto end;
+    }
 
     // Checking if user attributes are valid or not
     for (auto it = user_attributes.attributes->begin(); it != user_attributes.attributes->end(); it++) {
@@ -7650,7 +7655,7 @@ bool mysql_create_rule(THD *thd, std::string rule_name, int privs,
 
     table = tables[ACL_TABLES::TABLE_POLICY].table;
     // Insert new rule entry into policy table
-    ret |= modify_rule_in_table(thd, table, rule_name, privs, false);
+    ret |= modify_rule_in_table(thd, table, rule_name, privs, false, false);
     if (ret) {
       errors = true;
       // std::cout<<"Failed to add rule to policy table\n";
@@ -7726,6 +7731,11 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, 
       errors = true;
       goto end;
     }
+    if (abac_rule_db_hash->count(rule_name)) {
+      my_error(ER_INVALID_RULE_NAME, MYF(0));
+      errors = true;
+      goto end;
+    }
 
     // Checking if user attributes are valid or not
     for (auto it = user_attributes.attributes->begin(); it != user_attributes.attributes->end(); it++) {
@@ -7739,11 +7749,11 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, 
 
     table = tables[ACL_TABLES::TABLE_POLICY].table;
     // Insert new rule entry into policy table
-    ret |= modify_rule_in_table(thd, table, rule_name, privs, false);
+    ret |= modify_rule_in_table(thd, table, rule_name, privs, true, false);
     if (ret) {
       errors = true;
       // std::cout<<"Failed to add rule to policy table\n";
-      my_error(ER_FAILED_CREATE_RULE, MYF(0));
+      my_error(ER_FAILED_CREATE_RULE_DB, MYF(0));
       goto end;
     }
     table = tables[ACL_TABLES::TABLE_POLICY_USER_AVAL].table;
@@ -7758,7 +7768,7 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, 
     if (ret) {
       errors = true;
       // std::cout<<"Failed to add attribute value pairs to policy_user_aval\n";
-      my_error(ER_FAILED_CREATE_RULE, MYF(0));
+      my_error(ER_FAILED_CREATE_RULE_DB, MYF(0));
       goto end;
     }
 
@@ -7795,7 +7805,6 @@ bool mysql_delete_rule(THD *thd, std::string rule_name) {
   TABLE *table = nullptr;
   TABLE_LIST tables[ACL_TABLES::LAST_ENTRY];
   bool errors = false;
-  ABAC_RULE *rule = nullptr;
   
   if ((ret = open_grant_tables(thd, tables, &transactional_tables))) 
     return ret != 1;
@@ -7809,53 +7818,78 @@ bool mysql_delete_rule(THD *thd, std::string rule_name) {
     }
     
     // Check if rule having same name already exists
-    if (!abac_rule_hash->count(rule_name)) {
-      my_error(ER_INVALID_RULE_NAME, MYF(0));
-      errors = true;
-      goto end;
-    }
-    
-    rule = (*abac_rule_hash)[rule_name];
+    if (abac_rule_hash->count(rule_name)) {
+      ABAC_RULE *rule =  (*abac_rule_hash)[rule_name];
 
-    table = tables[ACL_TABLES::TABLE_POLICY_USER_AVAL].table;
-    // Delete entries from policy_user_aval table
-    for (auto it = rule->user_attrib_map.begin(); it != rule->user_attrib_map.end(); it++) {
-      ret |= modify_policy_user_aval_in_table(thd, table, rule_name, it->first, it->second, true);
+      table = tables[ACL_TABLES::TABLE_POLICY_USER_AVAL].table;
+      // Delete entries from policy_user_aval table
+      for (auto it = rule->user_attrib_map.begin(); it != rule->user_attrib_map.end(); it++) {
+        ret |= modify_policy_user_aval_in_table(thd, table, rule_name, it->first, it->second, true);
+        if (ret) {
+          my_error(ER_FAILED_DELETE_RULE, MYF(0));
+          errors = true;
+          goto end;
+        }
+      }
+
+      table = tables[ACL_TABLES::TABLE_POLICY_OBJECT_AVAL].table;
+      // Delete entries from policy_object_aval table
+      for (auto it = rule->object_attrib_map.begin(); it != rule->object_attrib_map.end(); it++) {
+        ret |= modify_policy_object_aval_in_table(thd, table, rule_name, it->first, it->second, true);
+        if (ret) {
+          my_error(ER_FAILED_DELETE_RULE, MYF(0));
+          errors = true;
+          goto end;
+        }
+      }
+
+      table = tables[ACL_TABLES::TABLE_POLICY].table;
+      // Delete rule from policy table
+      ret |= modify_rule_in_table(thd, table, rule_name, rule->access, false, true);
       if (ret) {
         my_error(ER_FAILED_DELETE_RULE, MYF(0));
         errors = true;
         goto end;
       }
     }
+    else if (abac_rule_db_hash->count(rule_name)) {
+      ABAC_RULE_DB *rule =  (*abac_rule_db_hash)[rule_name];
 
-    table = tables[ACL_TABLES::TABLE_POLICY_OBJECT_AVAL].table;
-    // Delete entries from policy_object_aval table
-    for (auto it = rule->object_attrib_map.begin(); it != rule->object_attrib_map.end(); it++) {
-      ret |= modify_policy_object_aval_in_table(thd, table, rule_name, it->first, it->second, true);
-      if (ret) {
-        my_error(ER_FAILED_DELETE_RULE, MYF(0));
-        errors = true;
-        goto end;
+      table = tables[ACL_TABLES::TABLE_POLICY_USER_AVAL].table;
+      // Delete entries from policy_user_aval table
+      for (auto it = rule->user_attrib_map.begin(); it != rule->user_attrib_map.end(); it++) {
+        ret |= modify_policy_user_aval_in_table(thd, table, rule_name, it->first, it->second, true);
+        if (ret) {
+          my_error(ER_FAILED_DELETE_RULE, MYF(0));
+          errors = true;
+          goto end;
+        }
       }
-    }
 
-    table = tables[ACL_TABLES::TABLE_POLICY_DB].table;
-    // Delete entries from policy_db table
+      table = tables[ACL_TABLES::TABLE_POLICY_DB].table;
+      // Delete entries from policy_db table
       ret |= modify_policy_db_in_table(thd, table, rule_name, rule->db_name, true);
       if (ret) {
         my_error(ER_FAILED_DELETE_RULE, MYF(0));
         errors = true;
         goto end;
-    }
+      }
 
-    table = tables[ACL_TABLES::TABLE_POLICY].table;
-    // Delete rule from policy table
-    ret |= modify_rule_in_table(thd, table, rule_name, rule->access, true);
-    if (ret) {
-      my_error(ER_FAILED_DELETE_RULE, MYF(0));
+      table = tables[ACL_TABLES::TABLE_POLICY].table;
+      // Delete rule from policy table
+      ret |= modify_rule_in_table(thd, table, rule_name, rule->access, true, true);
+      if (ret) {
+        my_error(ER_FAILED_DELETE_RULE, MYF(0));
+        errors = true;
+        goto end;
+      }
+    }
+    else {
+      my_error(ER_INVALID_RULE_NAME, MYF(0));
       errors = true;
       goto end;
     }
+    
     end:
       assert(!errors || thd->is_error());
       errors = log_and_commit_acl_ddl(thd, transactional_tables);

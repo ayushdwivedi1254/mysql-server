@@ -9689,7 +9689,7 @@ ER_FAILED_CREATE_RULE
   eng "Failed to create rule %s."
 
 ER_FAILED_CREATE_RULE_DB
-  eng "Failed to create rule %s."
+  eng "Failed to create db rule %s."
 
 ER_INVALID_RULE_NAME
   eng "Invalid rule name."
