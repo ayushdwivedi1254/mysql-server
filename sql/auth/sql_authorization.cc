@@ -3897,6 +3897,15 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
 
       GRANT_TABLE *abac_grant = abac_table_search(std::string(sctx->priv_user().str),
                  std::string(db_name), std::string(t_ref->get_table_name()));
+
+      std::string tname;
+      tname.append(1, '*');
+
+      GRANT_TABLE *abac_grant_db = abac_table_search(std::string(sctx->priv_user().str),
+                 std::string(db_name), tname);
+
+      if(!abac_grant) abac_grant = abac_grant_db;
+
       if (!grant_table && !abac_grant) {
         DBUG_PRINT("info",
                    ("Table %s didn't exist in the legacy table acl cache",

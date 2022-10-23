@@ -4146,6 +4146,24 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       } else {
         abac_table_db_priv_hash->at(mem_check->hash_key)->privs |= rule_hash_it->second->access;
       }
+
+      std::string tname;
+      tname.append(1, '*');
+
+      GRANT_TABLE *mem_check_db = new GRANT_TABLE(user_hash_it->second->host.hostname, 
+                  rule_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
+                            tname.c_str(), rule_hash_it->second->access, 0);
+
+        if (!abac_table_priv_hash->count(mem_check_db->hash_key)) {
+          // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
+          //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
+          //               user_hash_it->second->host.hostname);
+          
+          // table_grant->privs |= rule_hash_it->second->access;
+          abac_table_priv_hash->emplace(mem_check_db->hash_key, mem_check_db);
+        } else {
+          abac_table_priv_hash->at(mem_check_db->hash_key)->privs |= rule_hash_it->second->access;
+        }
     }
     iterator.reset();
     if (read_rec_errcode > 0) goto end;
