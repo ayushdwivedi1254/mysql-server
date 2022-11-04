@@ -242,6 +242,9 @@ SET @cmd = "CREATE TABLE IF NOT EXISTS policy (
 	Delete_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Create_view_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Drop_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
+  Create_proc_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
+  Execute_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
+  Alter_proc_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Db_level enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL
 ) engine=InnoDB STATS_PERSISTENT=0 CHARACTER SET utf8 COLLATE utf8_bin comment='ABAC Policies' ROW_FORMAT=DYNAMIC TABLESPACE=mysql";
 SET @str = CONCAT(@cmd, " ENCRYPTION='", @is_mysql_encrypted, "'");

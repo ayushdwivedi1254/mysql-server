@@ -43,7 +43,10 @@ class THD;
 #define MYSQL_POLICY_FIELD_DELETE_PRIV 4
 #define MYSQL_POLICY_FIELD_CREATE_VIEW_PRIV 5
 #define MYSQL_POLICY_FIELD_DROP_PRIV 6
-#define MYSQL_POLICY_FIELD_DB_LEVEL 7
+#define MYSQL_POLICY_FIELD_CREATE_PROC_PRIV 7
+#define MYSQL_POLICY_FIELD_EXECUTE_PRIV 8
+#define MYSQL_POLICY_FIELD_ALTER_PROC_PRIV 9
+#define MYSQL_POLICY_FIELD_DB_LEVEL 10
 
 #define MYSQL_POLICY_DB_RULE_NAME 0
 #define MYSQL_POLICY_DB_DB_NAME 1
@@ -90,6 +93,9 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 	char delete_field = (privs & DELETE_ACL) ? 'Y' : 'N';
 	char create_view_field = (privs & CREATE_VIEW_ACL) ? 'Y' : 'N';
 	char drop_field = (privs & DROP_ACL) ? 'Y' : 'N';
+	char create_proc_field = (privs & CREATE_PROC_ACL) ? 'Y' : 'N';
+	char execute_field = (privs & EXECUTE_ACL) ? 'Y' : 'N';
+	char alter_proc_field = (privs & ALTER_PROC_ACL) ? 'Y' : 'N';
 	char db_level = (db_level_option) ? 'Y' : 'N';
 
   table->field[MYSQL_POLICY_FIELD_SELECT_PRIV]->store(
@@ -104,6 +110,12 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 								&create_view_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
   table->field[MYSQL_POLICY_FIELD_DROP_PRIV]->store(
 								&drop_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
+  table->field[MYSQL_POLICY_FIELD_CREATE_PROC_PRIV]->store(
+								&create_proc_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
+  table->field[MYSQL_POLICY_FIELD_EXECUTE_PRIV]->store(
+								&execute_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
+  table->field[MYSQL_POLICY_FIELD_ALTER_PROC_PRIV]->store(
+								&alter_proc_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
   table->field[MYSQL_POLICY_FIELD_DB_LEVEL]->store(
 								&db_level, 1, system_charset_info, CHECK_FIELD_IGNORE); 
 

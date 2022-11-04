@@ -3905,6 +3905,7 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
                  std::string(db_name), tname);
 
       if(!abac_grant) abac_grant = abac_grant_db;
+      else abac_grant->privs |= abac_grant_db->privs;
 
       if (!grant_table && !abac_grant) {
         DBUG_PRINT("info",
@@ -4328,6 +4329,22 @@ bool check_grant_db(THD *thd, const char *db) {
   return error;
 }
 
+GRANT_NAME *abac_table_proc_search(std::string user, 
+    std::string db_name, std::string table_name) {
+  std::string key;
+  key.append(user);
+  key.push_back('\0');
+  key.append(db_name);
+  key.push_back('\0');
+  key.append(table_name);
+  key.push_back('\0');
+  GRANT_NAME *found = nullptr;
+  if (abac_table_proc_priv_hash->count(key)) {
+    found = (*abac_table_proc_priv_hash)[key];
+  }
+  return found;
+}
+
 /****************************************************************************
   Check routine level grants
 
@@ -4387,6 +4404,14 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
                             "found %lu",
                             table->db, grant_proc->privs));
       }
+      if ((grant_proc =
+               abac_table_proc_search(std::string(user),
+                 std::string(table->db), std::string(table->table_name)))) {
+        table->grant.privilege |= grant_proc->privs;
+        DBUG_PRINT("info", ("Checking for routine acls in %s; "
+                            "found %lu",
+                            table->db, grant_proc->privs));
+      }
     }
     if ((want_access & table->grant.privilege) != want_access) {
       want_access &= ~table->grant.privilege;
@@ -4427,6 +4452,7 @@ err:
    true            error
 */
 
+
 static bool check_routine_level_acl(THD *thd, const char *db, const char *name,
                                     bool is_proc) {
   DBUG_TRACE;
@@ -4436,10 +4462,17 @@ static bool check_routine_level_acl(THD *thd, const char *db, const char *name,
   Acl_cache_lock_guard acl_cache_lock(thd, Acl_cache_lock_mode::READ_MODE);
   if (!acl_cache_lock.lock(false)) return no_routine_acl;
 
+
   if ((grant_proc =
            routine_hash_search(sctx->priv_host().str, sctx->ip().str, db,
                                sctx->priv_user().str, name, is_proc, false)))
     no_routine_acl = !(grant_proc->privs & SHOW_PROC_ACLS);
+
+  if ((grant_proc =
+           abac_table_proc_search(std::string(sctx->priv_user().str),
+                 std::string(db), std::string(name))))
+    no_routine_acl = !(grant_proc->privs & SHOW_PROC_ACLS);
+
   return no_routine_acl;
 }
 
@@ -7735,7 +7768,7 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, 
     }
     
     // Check if rule having same name already exists
-    if (abac_rule_hash->count(rule_name)) {
+    if (abac_rule_hash->count(rule_name) || abac_rule_proc_hash->count(rule_name)) {
       my_error(ER_INVALID_RULE_NAME, MYF(0));
       errors = true;
       goto end;
@@ -7827,8 +7860,9 @@ bool mysql_delete_rule(THD *thd, std::string rule_name) {
     }
     
     // Check if rule having same name already exists
-    if (abac_rule_hash->count(rule_name)) {
+    if (abac_rule_hash->count(rule_name) || abac_rule_proc_hash->count(rule_name)) {
       ABAC_RULE *rule =  (*abac_rule_hash)[rule_name];
+      if(!rule) rule = (*abac_rule_proc_hash)[rule_name];
 
       table = tables[ACL_TABLES::TABLE_POLICY_USER_AVAL].table;
       // Delete entries from policy_user_aval table
@@ -8240,14 +8274,14 @@ bool mysql_grant_object_attribute(THD *thd, LEX_STRING attrib_name,
       if (thd->mdl_context.acquire_lock(&mdl_request,
                                         thd->variables.lock_wait_timeout))
         return true;
-      bool exists;
-      if (dd::table_exists(thd->dd_client(), db_name.str, table_name.str, &exists))
-        return true;
+      //bool exists;
+      //if (dd::table_exists(thd->dd_client(), db_name.str, table_name.str, &exists))
+      //  return true;
 
-      if (!exists) {
-        my_error(ER_NO_SUCH_TABLE, MYF(0), db_name, table_name);
-        return true;
-      }
+      //if (!exists) {
+      //  my_error(ER_NO_SUCH_TABLE, MYF(0), db_name, table_name);
+      //  return true;
+      //}
       // if (!db_name.length || !table_name.length) {
       //   my_error(ER_EMPTY_TABLE_OR_DB_NAME, MYF(0));
       //   errors = true;

@@ -16824,6 +16824,18 @@ privilege:
           {
             $$ = DROP_ACL;
           }
+          | EXECUTE_SYM
+          {
+            $$ = EXECUTE_ACL;
+          }
+          | CREATE PROCEDURE_SYM
+          {
+            $$ = CREATE_PROC_ACL;
+          }
+          | ALTER PROCEDURE_SYM
+          {
+            $$ = ALTER_PROC_ACL;
+          }
         ;
 
 opt_retain_current_password:
