@@ -240,6 +240,7 @@ SET @cmd = "CREATE TABLE IF NOT EXISTS policy (
   Insert_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
 	Update_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
 	Delete_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
+  Create_table_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Create_view_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Drop_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Create_proc_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,

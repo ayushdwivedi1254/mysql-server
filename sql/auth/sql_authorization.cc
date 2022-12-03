@@ -1406,6 +1406,24 @@ void get_sp_access_map(
       }
     }
   }
+
+  for (const auto &key_and_value : *abac_table_proc_priv_hash) {
+    GRANT_NAME *abac_proc_grant = key_and_value.second;
+    std::string user = std::string(acl_user->user);
+    std::string host_name = std::string(acl_user->host.get_host());
+    if (user == abac_proc_grant->user && 
+        host_name == std::string(abac_proc_grant->host.get_host())) { // Need to implement case insensitive checking
+      if (abac_proc_grant->privs != 0) {
+        String q_name;
+        append_identifier(&q_name, abac_proc_grant->db,
+                          strlen(abac_proc_grant->db));
+        q_name.append(".");
+        append_identifier(&q_name, abac_proc_grant->tname,
+                          strlen(abac_proc_grant->tname));
+        (*sp_map)[std::string(q_name.c_ptr())] |= abac_proc_grant->privs;
+      }
+    }
+  }
 }
 
 void get_table_access_map(ACL_USER *acl_user, Table_access_map *table_map) {
@@ -3905,7 +3923,7 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
                  std::string(db_name), tname);
 
       if(!abac_grant) abac_grant = abac_grant_db;
-      else abac_grant->privs |= abac_grant_db->privs;
+      else if(!abac_grant_db) abac_grant->privs |= abac_grant_db->privs;
 
       if (!grant_table && !abac_grant) {
         DBUG_PRINT("info",
@@ -4324,6 +4342,18 @@ bool check_grant_db(THD *thd, const char *db) {
                         "for schema level acls"));
     error = check_grant_db_routine(thd, db, proc_priv_hash.get()) &&
             check_grant_db_routine(thd, db, func_priv_hash.get());
+
+    for (auto key_and_value : *abac_table_proc_priv_hash) {
+      GRANT_NAME *item = key_and_value.second;
+
+      if (strcmp(item->user, sctx->priv_user().str) == 0 &&
+          strcmp(item->db, db) == 0 &&
+          item->host.compare_hostname(sctx->host().str, sctx->ip().str)) {
+        // return false;
+        error = false;
+        break;
+      }
+    }
   }
 
   return error;
@@ -4382,9 +4412,14 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
     if (has_roles) {
       ulong acl;
       if (is_proc) {
+        std::string tname;
+        tname.append(1, '*');
+        const char *tname_char = tname.c_str();
         acl =
             sctx->procedure_acl({table->db, table->db_length},
                                 {table->table_name, table->table_name_length});
+        acl |= sctx->procedure_acl({table->db, table->db_length},
+                                {tname_char, strlen(tname_char)});
       } else {
         acl = sctx->function_acl({table->db, table->db_length},
                                  {table->table_name, table->table_name_length});
@@ -4407,6 +4442,16 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
       if ((grant_proc =
                abac_table_proc_search(std::string(user),
                  std::string(table->db), std::string(table->table_name)))) {
+        table->grant.privilege |= grant_proc->privs;
+        DBUG_PRINT("info", ("Checking for routine acls in %s; "
+                            "found %lu",
+                            table->db, grant_proc->privs));
+      }
+      std::string tname;
+      tname.append(1, '*');
+      if ((grant_proc =
+               abac_table_proc_search(std::string(user),
+                 std::string(table->db), std::string(tname)))) {
         table->grant.privilege |= grant_proc->privs;
         DBUG_PRINT("info", ("Checking for routine acls in %s; "
                             "found %lu",
@@ -4471,7 +4516,15 @@ static bool check_routine_level_acl(THD *thd, const char *db, const char *name,
   if ((grant_proc =
            abac_table_proc_search(std::string(sctx->priv_user().str),
                  std::string(db), std::string(name))))
-    no_routine_acl = !(grant_proc->privs & SHOW_PROC_ACLS);
+    no_routine_acl = no_routine_acl  & (!(grant_proc->privs & SHOW_PROC_ACLS));
+
+  std::string tname;
+  tname.append(1, '*');
+  
+  if ((grant_proc =
+           abac_table_proc_search(std::string(sctx->priv_user().str),
+                 std::string(db), std::string(tname))))
+    no_routine_acl = no_routine_acl  & (!(grant_proc->privs & SHOW_PROC_ACLS));
 
   return no_routine_acl;
 }
@@ -7664,12 +7717,8 @@ bool mysql_create_rule(THD *thd, std::string rule_name, int privs,
     }
     
     // Check if rule having same name already exists
-    if (abac_rule_hash->count(rule_name)) {
-      my_error(ER_INVALID_RULE_NAME, MYF(0));
-      errors = true;
-      goto end;
-    }
-    if (abac_rule_db_hash->count(rule_name)) {
+    if (abac_rule_hash->count(rule_name) | abac_rule_db_hash->count(rule_name) |
+     abac_rule_proc_hash->count(rule_name) | abac_rule_db_proc_hash->count(rule_name)) {
       my_error(ER_INVALID_RULE_NAME, MYF(0));
       errors = true;
       goto end;
@@ -7768,12 +7817,8 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, 
     }
     
     // Check if rule having same name already exists
-    if (abac_rule_hash->count(rule_name) || abac_rule_proc_hash->count(rule_name)) {
-      my_error(ER_INVALID_RULE_NAME, MYF(0));
-      errors = true;
-      goto end;
-    }
-    if (abac_rule_db_hash->count(rule_name)) {
+    if (abac_rule_hash->count(rule_name) | abac_rule_db_hash->count(rule_name) |
+     abac_rule_proc_hash->count(rule_name) | abac_rule_db_proc_hash->count(rule_name)) {
       my_error(ER_INVALID_RULE_NAME, MYF(0));
       errors = true;
       goto end;
@@ -7895,8 +7940,9 @@ bool mysql_delete_rule(THD *thd, std::string rule_name) {
         goto end;
       }
     }
-    else if (abac_rule_db_hash->count(rule_name)) {
+    else if (abac_rule_db_hash->count(rule_name) || abac_rule_db_proc_hash->count(rule_name)) {
       ABAC_RULE_DB *rule =  (*abac_rule_db_hash)[rule_name];
+      if(!rule) rule = (*abac_rule_db_proc_hash)[rule_name];
 
       table = tables[ACL_TABLES::TABLE_POLICY_USER_AVAL].table;
       // Delete entries from policy_user_aval table

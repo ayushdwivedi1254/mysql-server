@@ -2165,6 +2165,7 @@ void warn_about_deprecated_binary(THD *thd)
 
 /* Types for ABAC */
 %type <num> privilege privilege_list
+%type <num> privilege_create privilege_create_list
 
 %type <attribute_map> user_attribute_list object_attribute_list
 
@@ -3431,7 +3432,7 @@ create_rule_stmt:
             $$ = NEW_PTN PT_create_rule(string($3.str), $5, $10, $16);
           }
           |
-          CREATE RULE_SYM ident FOR_SYM privilege_list
+          CREATE RULE_SYM ident FOR_SYM privilege_create_list
           OF_SYM USER ATTRIBUTE_SYM '(' user_attribute_list ')' ON_SYM schema
           {
             $$ = NEW_PTN PT_create_rule_db(string($3.str), string($13.str), $5, $10);
@@ -16816,10 +16817,6 @@ privilege:
           {
             $$ = DELETE_ACL;
           }
-          | CREATE VIEW_SYM
-          {
-            $$ = CREATE_VIEW_ACL;
-          }
           | DROP
           {
             $$ = DROP_ACL;
@@ -16828,13 +16825,35 @@ privilege:
           {
             $$ = EXECUTE_ACL;
           }
-          | CREATE PROCEDURE_SYM
-          {
-            $$ = CREATE_PROC_ACL;
-          }
           | ALTER PROCEDURE_SYM
           {
             $$ = ALTER_PROC_ACL;
+          }
+        ;
+
+privilege_create_list:
+          privilege_create
+          {
+            $$ = $1;
+          }
+          | privilege_create_list ',' privilege_create 
+          {
+            $$ = $1 | $3;
+          }
+        ;
+
+privilege_create:
+          CREATE TABLE_SYM
+          {
+            $$ = CREATE_ACL;
+          }
+          | CREATE VIEW_SYM
+          {
+            $$ = CREATE_VIEW_ACL;
+          }
+          | CREATE PROCEDURE_SYM
+          {
+            $$ = CREATE_PROC_ACL;
           }
         ;
 

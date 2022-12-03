@@ -576,13 +576,13 @@ extern Prealloced_array<ACL_DB, ACL_PREALLOC_SIZE> *acl_dbs;
 extern Prealloced_array<ACL_HOST_AND_IP, ACL_PREALLOC_SIZE> *acl_wild_hosts;
 // extern Prealloced_array<ABAC_OBJECT, ACL_PREALLOC_SIZE> *abac_objects;
 extern malloc_unordered_map<std::string, GRANT_TABLE*> *abac_table_priv_hash;
+extern malloc_unordered_map<std::string, GRANT_NAME*> *abac_table_proc_priv_hash;
 extern malloc_unordered_map<std::string, ACL_USER_ABAC*> *acl_user_abac_hash;
 extern malloc_unordered_map<std::string, ABAC_OBJECT*> *abac_object_hash;
 extern malloc_unordered_map<std::string, ABAC_RULE*> *abac_rule_hash;
 extern malloc_unordered_map<std::string, ABAC_RULE*> *abac_rule_proc_hash;
-extern malloc_unordered_map<std::string, ABAC_TABLE_GRANT*> *abac_table_db_priv_hash;
-extern malloc_unordered_map<std::string, GRANT_NAME*> *abac_table_proc_priv_hash;
 extern malloc_unordered_map<std::string, ABAC_RULE_DB*> *abac_rule_db_hash;
+extern malloc_unordered_map<std::string, ABAC_RULE_DB*> *abac_rule_db_proc_hash;
 extern malloc_unordered_set<std::string> *user_attribute_set;
 extern malloc_unordered_set<std::string> *object_attribute_set;
 

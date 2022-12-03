@@ -41,12 +41,13 @@ class THD;
 #define MYSQL_POLICY_FIELD_INSERT_PRIV 2
 #define MYSQL_POLICY_FIELD_UPDATE_PRIV 3
 #define MYSQL_POLICY_FIELD_DELETE_PRIV 4
-#define MYSQL_POLICY_FIELD_CREATE_VIEW_PRIV 5
-#define MYSQL_POLICY_FIELD_DROP_PRIV 6
-#define MYSQL_POLICY_FIELD_CREATE_PROC_PRIV 7
-#define MYSQL_POLICY_FIELD_EXECUTE_PRIV 8
-#define MYSQL_POLICY_FIELD_ALTER_PROC_PRIV 9
-#define MYSQL_POLICY_FIELD_DB_LEVEL 10
+#define MYSQL_POLICY_FIELD_CREATE_TABLE_PRIV 5
+#define MYSQL_POLICY_FIELD_CREATE_VIEW_PRIV 6
+#define MYSQL_POLICY_FIELD_DROP_PRIV 7
+#define MYSQL_POLICY_FIELD_CREATE_PROC_PRIV 8
+#define MYSQL_POLICY_FIELD_EXECUTE_PRIV 9
+#define MYSQL_POLICY_FIELD_ALTER_PROC_PRIV 10
+#define MYSQL_POLICY_FIELD_DB_LEVEL 11
 
 #define MYSQL_POLICY_DB_RULE_NAME 0
 #define MYSQL_POLICY_DB_DB_NAME 1
@@ -91,6 +92,7 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 	char insert_field = (privs & INSERT_ACL) ? 'Y' : 'N';
 	char update_field = (privs & UPDATE_ACL) ? 'Y' : 'N';
 	char delete_field = (privs & DELETE_ACL) ? 'Y' : 'N';
+	char create_table_field = (privs & CREATE_ACL) ? 'Y' : 'N';
 	char create_view_field = (privs & CREATE_VIEW_ACL) ? 'Y' : 'N';
 	char drop_field = (privs & DROP_ACL) ? 'Y' : 'N';
 	char create_proc_field = (privs & CREATE_PROC_ACL) ? 'Y' : 'N';
@@ -105,7 +107,9 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
   table->field[MYSQL_POLICY_FIELD_UPDATE_PRIV]->store(
 								&update_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
   table->field[MYSQL_POLICY_FIELD_DELETE_PRIV]->store(
-								&delete_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
+								&delete_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
+  table->field[MYSQL_POLICY_FIELD_CREATE_TABLE_PRIV]->store(
+								&create_table_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
   table->field[MYSQL_POLICY_FIELD_CREATE_VIEW_PRIV]->store(
 								&create_view_field, 1, system_charset_info, CHECK_FIELD_IGNORE); 
   table->field[MYSQL_POLICY_FIELD_DROP_PRIV]->store(

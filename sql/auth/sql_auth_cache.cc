@@ -140,6 +140,7 @@ malloc_unordered_map<string, ABAC_RULE*> *abac_rule_proc_hash;
 malloc_unordered_map<string, GRANT_TABLE*> *abac_table_priv_hash;
 malloc_unordered_map<string, GRANT_NAME*> *abac_table_proc_priv_hash;
 malloc_unordered_map<string, ABAC_RULE_DB*> *abac_rule_db_hash;
+malloc_unordered_map<string, ABAC_RULE_DB*> *abac_rule_db_proc_hash;
 malloc_unordered_set<std::string> *user_attribute_set = nullptr;
 malloc_unordered_set<std::string> *object_attribute_set = nullptr;
 Db_access_map acl_db_map;
@@ -3981,6 +3982,7 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       char *insert_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_INSERT_PRIV]);
       char *delete_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_DELETE_PRIV]);
       char *update_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_UPDATE_PRIV]);
+      char *create_table_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_CREATE_TABLE_PRIV]);
       char *create_view_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_CREATE_VIEW_PRIV]);
       char *drop_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_DROP_PRIV]);
       char *create_proc_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_CREATE_PROC_PRIV]);
@@ -3992,6 +3994,7 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       if (insert_priv[0] == 'Y') access |= INSERT_ACL;
       if (delete_priv[0] == 'Y') access |= DELETE_ACL;
       if (update_priv[0] == 'Y') access |= UPDATE_ACL;
+      if (create_table_priv[0] == 'Y') access |= CREATE_ACL;
       if (create_view_priv[0] == 'Y') access |= CREATE_VIEW_ACL;
       if (drop_priv[0] == 'Y') access |= DROP_ACL;
       if (create_proc_priv[0] == 'Y') access |= CREATE_PROC_ACL;
@@ -4003,7 +4006,9 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
         abac_rule_db->set_rule_name(rule_name);
 
         abac_rule_db->set_access(access);
-        abac_rule_db_hash->emplace(rule_name, abac_rule_db);
+
+        if(access & SHOW_PROC_ACLS) abac_rule_db_proc_hash->emplace(rule_name, abac_rule_db);
+        else abac_rule_db_hash->emplace(rule_name, abac_rule_db);
       }
       else {
         ABAC_RULE *abac_rule = new ABAC_RULE();
@@ -4011,7 +4016,7 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
 
         abac_rule->set_access(access);
 
-        if(access & PROC_ACLS) abac_rule_proc_hash->emplace(rule_name, abac_rule);
+        if(access & SHOW_PROC_ACLS) abac_rule_proc_hash->emplace(rule_name, abac_rule);
         else abac_rule_hash->emplace(rule_name, abac_rule);
       }
     }
@@ -4034,6 +4039,7 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       if(abac_rule_hash->count(rule_name))  (*abac_rule_hash)[rule_name]->set_user_attribute(attrib_name, attrib_val);
       else if(abac_rule_proc_hash->count(rule_name)) (*abac_rule_proc_hash)[rule_name]->set_user_attribute(attrib_name, attrib_val);
       else if(abac_rule_db_hash->count(rule_name)) (*abac_rule_db_hash)[rule_name]->set_user_attribute(attrib_name, attrib_val);
+      else if(abac_rule_db_proc_hash->count(rule_name)) (*abac_rule_db_proc_hash)[rule_name]->set_user_attribute(attrib_name, attrib_val);
     }
     iterator.reset();
     if (read_rec_errcode > 0) goto end;
@@ -4067,7 +4073,9 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       string rule_name = string(get_field(&abac_memory, table->field[MYSQL_POLICY_DB_RULE_NAME]));
       string db_name = string(get_field(&abac_memory, 
           table->field[MYSQL_POLICY_DB_DB_NAME]));
-      (*abac_rule_db_hash)[rule_name]->set_db(db_name);
+
+      if(abac_rule_db_hash->count(rule_name))  (*abac_rule_db_hash)[rule_name]->set_db(db_name);
+      else if(abac_rule_db_proc_hash->count(rule_name)) (*abac_rule_db_proc_hash)[rule_name]->set_db(db_name);
     }
     iterator.reset();
     if (read_rec_errcode > 0) goto end;
@@ -4176,7 +4184,7 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
     if (read_rec_errcode > 0) goto end;
   }
 
-    for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
+  for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
     for (auto user_hash_it = acl_user_abac_hash->begin(); 
         user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
       bool check = true;
@@ -4213,6 +4221,49 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
           abac_table_priv_hash->emplace(mem_check_db->hash_key, mem_check_db);
         } else {
           abac_table_priv_hash->at(mem_check_db->hash_key)->privs |= rule_hash_it->second->access;
+        }
+    }
+    iterator.reset();
+    if (read_rec_errcode > 0) goto end;
+  }
+
+  for (auto rule_hash_it = abac_rule_db_proc_hash->begin(); rule_hash_it != abac_rule_db_proc_hash->end(); rule_hash_it++) {
+    for (auto user_hash_it = acl_user_abac_hash->begin(); 
+        user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
+      bool check = true;
+      user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+      // string hash_prefix = string(user_hash_it->second->user);
+      // hash_prefix.push_back('\0');
+
+      for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+        if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
+          check = false; break;
+        }
+      }
+      if (!check) continue;
+
+      // string hash = hash_prefix;
+      // hash.append(object_hash_it->second->db_name);
+      // hash.push_back('\0');
+      // hash.append(object_hash_it->second->table_name);
+      // hash.push_back('\0');
+
+      std::string tname;
+      tname.append(1, '*');
+
+       GRANT_NAME *mem_check = new GRANT_NAME(user_hash_it->second->host.hostname, 
+                  rule_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
+                            tname.c_str(), rule_hash_it->second->access, true);
+
+        if (!abac_table_proc_priv_hash->count(mem_check->hash_key)) {
+          // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
+          //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
+          //               user_hash_it->second->host.hostname);
+          
+          // table_grant->privs |= rule_hash_it->second->access;
+          abac_table_proc_priv_hash->emplace(mem_check->hash_key, mem_check);
+        } else {
+          abac_table_proc_priv_hash->at(mem_check->hash_key)->privs |= rule_hash_it->second->access;
         }
     }
     iterator.reset();
@@ -4286,6 +4337,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   malloc_unordered_map<string, ABAC_RULE*> *old_abac_rule_proc_hash = nullptr;
   malloc_unordered_map<string, GRANT_NAME*> *old_abac_table_proc_priv_hash = nullptr;
   malloc_unordered_map<string, ABAC_RULE_DB*> *old_abac_rule_db_hash = nullptr;
+  malloc_unordered_map<string, ABAC_RULE_DB*> *old_abac_rule_db_proc_hash = nullptr;
   malloc_unordered_set<string> *old_user_attribute_set = nullptr;
   malloc_unordered_set<string> *old_object_attribute_set = nullptr;
   DBUG_TRACE;
@@ -4348,6 +4400,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   old_abac_table_priv_hash = abac_table_priv_hash;
   old_abac_table_proc_priv_hash = abac_table_proc_priv_hash;
   old_abac_rule_db_hash = abac_rule_db_hash;
+  old_abac_rule_db_proc_hash = abac_rule_db_proc_hash;
   old_user_attribute_set  = user_attribute_set;
   old_object_attribute_set = object_attribute_set;
   old_mem = move(abac_memory);
@@ -4358,6 +4411,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   abac_rule_proc_hash = new malloc_unordered_map<string, ABAC_RULE*>(key_memory_acl_memex);
   abac_table_proc_priv_hash = new malloc_unordered_map<string, GRANT_NAME*>(key_memory_acl_memex);
   abac_rule_db_hash = new malloc_unordered_map<string, ABAC_RULE_DB*>(key_memory_acl_memex);
+  abac_rule_db_proc_hash = new malloc_unordered_map<string, ABAC_RULE_DB*>(key_memory_acl_memex);
   acl_user_abac_hash = new malloc_unordered_map<string, ACL_USER_ABAC*>(key_memory_acl_memex);
   user_attribute_set = new malloc_unordered_set<string>(key_memory_acl_memex);
   object_attribute_set = new malloc_unordered_set<string>(key_memory_acl_memex);
@@ -4370,6 +4424,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
     abac_rule_proc_hash = old_abac_rule_proc_hash;
     abac_table_proc_priv_hash = old_abac_table_proc_priv_hash;
     abac_rule_db_hash = old_abac_rule_db_hash;
+    abac_rule_db_proc_hash = old_abac_rule_db_proc_hash;
     acl_user_abac_hash = old_acl_user_abac_hash;
     user_attribute_set = old_user_attribute_set;
     object_attribute_set = old_object_attribute_set;
@@ -4381,6 +4436,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
     delete old_abac_rule_proc_hash;
     delete old_abac_table_proc_priv_hash;
     delete old_abac_rule_db_hash;
+    delete old_abac_rule_db_proc_hash;
     delete old_acl_user_abac_hash;
     delete old_user_attribute_set;
     delete old_object_attribute_set;
