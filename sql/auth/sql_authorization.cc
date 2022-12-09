@@ -2210,7 +2210,7 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
                   GRANT_INTERNAL_INFO *grant_internal_info,
                   bool dont_check_global_grants, bool no_errors) {
   Security_context *sctx = thd->security_context();
-  ulong db_access;
+  ulong db_access=0;
   const std::string &db_name = db ? db : "";
 
   /*
@@ -2272,6 +2272,8 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
       }
     }
   }
+  DBUG_PRINT("info",
+             ("1 db_access: %lu  want_access: %lu", db_access, want_access));
 
   if (sctx->check_access(want_access, db_name)) {
     /*
@@ -2304,6 +2306,9 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
     return false;
   }
 
+  DBUG_PRINT("info",
+             ("2 db_access: %lu  want_access: %lu", db_access, want_access));
+
   if (((want_access & ~sctx->master_access(db_name)) & ~DB_ACLS) ||
       (!db && dont_check_global_grants)) {  // We can never grant this
     DBUG_PRINT("error", ("No possible access"));
@@ -2319,6 +2324,9 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
     }
     return true; /* purecov: tested */
   }
+
+  DBUG_PRINT("info",
+             ("3 db_access: %lu  want_access: %lu", db_access, want_access));
 
   if (db == any_db) {
     /*
@@ -2340,6 +2348,8 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
     }
   } else
     db_access = sctx->current_db_access();
+  DBUG_PRINT("info",
+             ("4 db_access: %lu  want_access: %lu", db_access, want_access));
   DBUG_PRINT("info",
              ("db_access: %lu  want_access: %lu", db_access, want_access));
 
@@ -2377,6 +2387,8 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
     [out] *save_privileges is (User-priv | (Db-priv & Host-priv) |
     Internal-priv)
   */
+  DBUG_PRINT("info",
+             ("db_access: %lu  want_access: %lu", db_access, want_access));
   DBUG_PRINT("error", ("Access denied"));
   if (!no_errors)
     my_error(ER_DBACCESS_DENIED_ERROR, MYF(0), sctx->priv_user().str,
@@ -3916,15 +3928,6 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
       GRANT_TABLE *abac_grant = abac_table_search(std::string(sctx->priv_user().str),
                  std::string(db_name), std::string(t_ref->get_table_name()));
 
-      std::string tname;
-      tname.append(1, '*');
-
-      GRANT_TABLE *abac_grant_db = abac_table_search(std::string(sctx->priv_user().str),
-                 std::string(db_name), tname);
-
-      if(!abac_grant) abac_grant = abac_grant_db;
-      else if(!abac_grant_db) abac_grant->privs |= abac_grant_db->privs;
-
       if (!grant_table && !abac_grant) {
         DBUG_PRINT("info",
                    ("Table %s didn't exist in the legacy table acl cache",
@@ -4412,14 +4415,9 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
     if (has_roles) {
       ulong acl;
       if (is_proc) {
-        std::string tname;
-        tname.append(1, '*');
-        const char *tname_char = tname.c_str();
         acl =
             sctx->procedure_acl({table->db, table->db_length},
                                 {table->table_name, table->table_name_length});
-        acl |= sctx->procedure_acl({table->db, table->db_length},
-                                {tname_char, strlen(tname_char)});
       } else {
         acl = sctx->function_acl({table->db, table->db_length},
                                  {table->table_name, table->table_name_length});
@@ -4442,16 +4440,6 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
       if ((grant_proc =
                abac_table_proc_search(std::string(user),
                  std::string(table->db), std::string(table->table_name)))) {
-        table->grant.privilege |= grant_proc->privs;
-        DBUG_PRINT("info", ("Checking for routine acls in %s; "
-                            "found %lu",
-                            table->db, grant_proc->privs));
-      }
-      std::string tname;
-      tname.append(1, '*');
-      if ((grant_proc =
-               abac_table_proc_search(std::string(user),
-                 std::string(table->db), std::string(tname)))) {
         table->grant.privilege |= grant_proc->privs;
         DBUG_PRINT("info", ("Checking for routine acls in %s; "
                             "found %lu",
@@ -4516,14 +4504,6 @@ static bool check_routine_level_acl(THD *thd, const char *db, const char *name,
   if ((grant_proc =
            abac_table_proc_search(std::string(sctx->priv_user().str),
                  std::string(db), std::string(name))))
-    no_routine_acl = no_routine_acl  & (!(grant_proc->privs & SHOW_PROC_ACLS));
-
-  std::string tname;
-  tname.append(1, '*');
-  
-  if ((grant_proc =
-           abac_table_proc_search(std::string(sctx->priv_user().str),
-                 std::string(db), std::string(tname))))
     no_routine_acl = no_routine_acl  & (!(grant_proc->privs & SHOW_PROC_ACLS));
 
   return no_routine_acl;
@@ -5636,6 +5616,12 @@ void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
       grant->grant_table =
           table_hash_search(sctx->host().str, sctx->ip().str, db, priv_user.str,
                             table, false); /* purecov: inspected */
+      GRANT_TABLE *abac_grant = abac_table_search(std::string(priv_user.str),
+                 std::string(db), std::string(table));
+      if(abac_grant != nullptr ) {
+        if(grant->grant_table != nullptr) grant->grant_table->privs |= abac_grant->privs;
+        else grant->grant_table = abac_grant;
+      }
       grant->version = grant_version;      /* purecov: inspected */
     }
     if (grant->grant_table != nullptr) {
@@ -8320,19 +8306,33 @@ bool mysql_grant_object_attribute(THD *thd, LEX_STRING attrib_name,
       if (thd->mdl_context.acquire_lock(&mdl_request,
                                         thd->variables.lock_wait_timeout))
         return true;
-      //bool exists;
-      //if (dd::table_exists(thd->dd_client(), db_name.str, table_name.str, &exists))
-      //  return true;
+      
+      if (!db_name.length || !table_name.length) {
+        my_error(ER_EMPTY_TABLE_OR_DB_NAME, MYF(0));
+        errors = true;
+        break;
+      }
 
-      //if (!exists) {
-      //  my_error(ER_NO_SUCH_TABLE, MYF(0), db_name, table_name);
-      //  return true;
-      //}
-      // if (!db_name.length || !table_name.length) {
-      //   my_error(ER_EMPTY_TABLE_OR_DB_NAME, MYF(0));
-      //   errors = true;
-      //   break;
-      // }
+      bool exists;
+      if (dd::table_exists(thd->dd_client(), db_name.str, table_name.str, &exists))
+       return true;
+
+      bool sp_exists = false;
+      TABLE_LIST sp[1];
+      new (&sp[0]) TABLE_LIST();
+      sp->db = db_name.str;
+      sp->table_name = sp->alias = table_name.str;
+      
+      Dummy_error_handler error_handler;
+      thd->push_internal_handler(&error_handler);
+      sp_exists = !sp_exist_routines(thd, sp, true);
+      thd->pop_internal_handler();
+
+      if (!exists && !sp_exists) {
+       my_error(ER_NO_SUCH_TABLE, MYF(0), db_name.str, table_name.str);
+       return true;
+      }
+      
       ABAC_OBJECT *abac_object = find_abac_object(db_name, table_name);
       if (abac_object == nullptr || !abac_object->attrib_map.count(std::string(attrib_name.str))) {
         errors |= modify_object_attrib_val_in_table(thd, table, db_name, table_name, attrib_name, to_string(value), false);

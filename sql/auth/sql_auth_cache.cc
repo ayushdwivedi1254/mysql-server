@@ -1477,6 +1477,8 @@ ulong acl_get(THD *thd, const char *host, const char *ip, const char *user,
     Check if there are some access rights for database and user
   */
   for (ACL_DB *acl_db = acl_dbs->begin(); acl_db != acl_dbs->end(); ++acl_db) {
+    DBUG_PRINT("info",
+             ("db_access: %lu  db_name:%s", acl_db->access, acl_db->db));
     if (!acl_db->user || !strcmp(user, acl_db->user)) {
       if (acl_db->host.compare_hostname(host, ip)) {
         /*
@@ -1489,7 +1491,29 @@ ulong acl_get(THD *thd, const char *host, const char *ip, const char *user,
                   ? (!strcmp(db, acl_db->db))
                   : (!wild_compare(db, strlen(db), acl_db->db,
                                    strlen(acl_db->db), db_is_pattern))))) {
-          db_access = acl_db->access;
+          db_access |= acl_db->access;
+          // if (acl_db->host.get_host()) goto exit;  // Fully specified. Take it
+          // break;                                   /* purecov: tested */
+        }
+      }
+    }
+  }
+  for (ACL_DB *acl_db = acl_dbs->begin(); acl_db != acl_dbs->end(); ++acl_db) {
+    DBUG_PRINT("info",
+             ("db_access: %lu  db_name:%s", acl_db->access, acl_db->db));
+    if (!acl_db->user || !strcmp(user, acl_db->user)) {
+      if (acl_db->host.compare_hostname(host, ip)) {
+        /*
+          Do the usual string comparision if partial_revokes is ON,
+          otherwise do the wildcard grant comparision
+        */
+        if (!acl_db->db ||
+            (db &&
+             (mysqld_partial_revokes()
+                  ? (!strcmp(db, acl_db->db))
+                  : (!wild_compare(db, strlen(db), acl_db->db,
+                                   strlen(acl_db->db), db_is_pattern))))) {
+          db_access |= acl_db->access;
           if (acl_db->host.get_host()) goto exit;  // Fully specified. Take it
           break;                                   /* purecov: tested */
         }
@@ -1654,9 +1678,12 @@ bool acl_getroot(THD *thd, Security_context *sctx, const char *user,
       }
     }
 
+    int db_access = 0;
     if (sctx->get_active_roles()->size() == 0) {
       for (ACL_DB *acl_db = acl_dbs->begin(); acl_db != acl_dbs->end();
            ++acl_db) {
+        // DBUG_PRINT("info",
+        //      ("acl_db: %s acl_user: %s", acl_db->db, acl_db->user));
         if (!acl_db->user || (user && user[0] && !strcmp(user, acl_db->user))) {
           if (acl_db->host.compare_hostname(host, ip)) {
             /*
@@ -1668,7 +1695,31 @@ bool acl_getroot(THD *thd, Security_context *sctx, const char *user,
                             ? (!strcmp(db, acl_db->db))
                             : (!wild_compare(db, strlen(db), acl_db->db,
                                              strlen(acl_db->db), false))))) {
-              sctx->cache_current_db_access(acl_db->access);
+              db_access |= acl_db->access;
+              break;
+            }
+          }
+        }  // end if
+      }    // end for
+    }
+
+    if (sctx->get_active_roles()->size() == 0) {
+      for (ACL_DB *acl_db = acl_dbs->begin(); acl_db != acl_dbs->end();
+           ++acl_db) {
+        DBUG_PRINT("info",
+             ("acl_db: %s acl_user: %s", acl_db->db, acl_db->user));
+        if (!acl_db->user || (user && user[0] && !strcmp(user, acl_db->user))) {
+          if (acl_db->host.compare_hostname(host, ip)) {
+            /*
+              Do the usual string comparision if partial_revokes is ON,
+              otherwise do the wildcard grant comparision
+            */
+            if (!acl_db->db ||
+                (db && (mysqld_partial_revokes()
+                            ? (!strcmp(db, acl_db->db))
+                            : (!wild_compare(db, strlen(db), acl_db->db,
+                                             strlen(acl_db->db), false))))) {
+              sctx->cache_current_db_access(db_access);
               break;
             }
           }
@@ -3988,6 +4039,7 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       char *create_proc_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_CREATE_PROC_PRIV]);
       char *execute_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_EXECUTE_PRIV]);
       char *alter_proc_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_ALTER_PROC_PRIV]);
+      char *trigger_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_TRIGGER_PRIV]);
       char *db_level = get_field(&abac_memory, table->field[MYSQL_POLICY_DB_LEVEL]);
 
       if (select_priv[0] == 'Y') access |= SELECT_ACL;
@@ -4000,6 +4052,7 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       if (create_proc_priv[0] == 'Y') access |= CREATE_PROC_ACL;
       if (execute_priv[0] == 'Y') access |= EXECUTE_ACL;
       if (alter_proc_priv[0] == 'Y') access |= ALTER_PROC_ACL;
+      if (trigger_priv[0] == 'Y') access |= TRIGGER_ACL;
 
       if(db_level[0] == 'Y') {
         ABAC_RULE_DB *abac_rule_db = new ABAC_RULE_DB();
@@ -4205,6 +4258,22 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       // hash.append(object_hash_it->second->table_name);
       // hash.push_back('\0');
 
+      ACL_DB db;
+      db.host.update_hostname(user_hash_it->second->host.hostname);
+      string db_str = rule_hash_it->second->db_name;
+      // char db_char[db_str.length() + 1];
+      // strcpy(db_char, db_str.c_str());
+      // db.db = &db_str[0];
+      db.db = strdup(db_str.c_str());
+      db.user = user_hash_it->second->user;
+      db.access = rule_hash_it->second->access;
+
+      DBUG_PRINT("info", ("db_access: %lu   db: %s", db.access, db.db));
+
+
+      db.sort = get_sort(3, db.host.get_host(), db.db, db.user);
+      acl_dbs->push_back(db);
+
       std::string tname;
       tname.append(1, '*');
 
@@ -4247,6 +4316,19 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       // hash.push_back('\0');
       // hash.append(object_hash_it->second->table_name);
       // hash.push_back('\0');
+
+      ACL_DB db;
+      db.host.update_hostname(user_hash_it->second->host.hostname);
+      string db_str = rule_hash_it->second->db_name;
+      // char db_char[db_str.length() + 1];
+      // strcpy(db_char, db_str.c_str());
+      // db.db = &db_str[0];
+      db.db = strdup(db_str.c_str());
+      db.user = user_hash_it->second->user;
+      db.access = rule_hash_it->second->access;
+
+      db.sort = get_sort(3, db.host.get_host(), db.db, db.user);
+      acl_dbs->push_back(db);
 
       std::string tname;
       tname.append(1, '*');
