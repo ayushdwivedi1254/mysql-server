@@ -559,7 +559,10 @@ static const TABLE_FIELD_TYPE
          {STRING_WITH_LEN("utf8")}},
         {{STRING_WITH_LEN("Alter_proc_priv")},
          {STRING_WITH_LEN("enum('N','Y')")},
-         {STRING_WITH_LEN("utf8")}}, 
+         {STRING_WITH_LEN("utf8")}},
+        {{STRING_WITH_LEN("Trigger_priv")},
+         {STRING_WITH_LEN("enum('N','Y')")},
+         {STRING_WITH_LEN("utf8")}},  
         {{STRING_WITH_LEN("Db_level")},
          {STRING_WITH_LEN("enum('N','Y')")},
          {STRING_WITH_LEN("utf8")}}   

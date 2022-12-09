@@ -16829,6 +16829,11 @@ privilege:
           {
             $$ = ALTER_PROC_ACL;
           }
+          |
+            TRIGGER_SYM
+          {
+            $$ = TRIGGER_ACL;
+          }
         ;
 
 privilege_create_list:
