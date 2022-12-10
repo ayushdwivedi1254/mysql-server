@@ -95,6 +95,7 @@
 #include "sql/auth/abac_tables.h"
 #include "sql/current_thd.h"
 #include "sql/dd/dd_table.h"  // dd::table_exists
+#include "sql/dd/dd_schema.h"  // dd::schema_exists
 #include "sql/debug_sync.h"
 #include "sql/derror.h"        /* ER_THD */
 #include "sql/error_handler.h" /* error_handler */
@@ -7790,6 +7791,7 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, 
   TABLE *table = nullptr;
   TABLE_LIST tables[ACL_TABLES::LAST_ENTRY];
   bool errors = false;
+  bool exists = false;
   
   if ((ret = open_grant_tables(thd, tables, &transactional_tables))) 
     return ret != 1;
@@ -7818,6 +7820,18 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, 
         errors = true;
         goto end;
       }
+    }
+
+    // DBUG_PRINT("info", ("db: %s, db_len: %ld", db_name.c_str(),
+    //                     db_name.length()));
+    
+    errors = dd::schema_exists(thd, db_name.c_str(), &exists);
+    DBUG_PRINT("info", ("db: %s, exists: %d, errors: %d", db_name.c_str(),
+                        exists, errors));
+    if((!errors && !exists) || errors) {
+      errors = true;
+      my_error(ER_EMPTY_TABLE_OR_DB_NAME, MYF(0));
+      goto end;
     }
 
     table = tables[ACL_TABLES::TABLE_POLICY].table;
@@ -8326,6 +8340,7 @@ bool mysql_grant_object_attribute(THD *thd, LEX_STRING attrib_name,
       Dummy_error_handler error_handler;
       thd->push_internal_handler(&error_handler);
       sp_exists = !sp_exist_routines(thd, sp, true);
+      sp_exists  = sp_exists | !sp_exist_routines(thd, sp, false);
       thd->pop_internal_handler();
 
       if (!exists && !sp_exists) {
