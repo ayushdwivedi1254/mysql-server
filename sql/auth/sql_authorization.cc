@@ -2351,7 +2351,124 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
     db_access = sctx->current_db_access();
   DBUG_PRINT("info",
              ("4 db_access: %lu  want_access: %lu", db_access, want_access));
-  DBUG_PRINT("info",
+
+
+  /*
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   */
+
+  if(abac_rule_db_hash != nullptr)
+  for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
+    bool check1 = true, check2 = true;
+
+    DBUG_PRINT("info",
+                   ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
+                    rule_hash_it->second->access, db_access, want_access));
+
+    user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+    // object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+
+    string user_hash_value = sctx->priv_user().str;
+    user_hash_value.push_back('\0');
+    user_hash_value.append(sctx->priv_host().str);
+    user_hash_value.push_back('\0');
+
+    if(acl_user_abac_hash != nullptr) 
+      if (acl_user_abac_hash->count(user_hash_value)) {
+        ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
+        user_attribute_map user_map_2 = user_abac->attrib_map;
+
+        for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+          DBUG_PRINT("info",
+                   ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+        }
+    }
+
+    if(acl_user_abac_hash != nullptr ) {
+      if((acl_user_abac_hash->count(user_hash_value))) {
+        ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
+
+        for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+          if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+            check1 = false; break;
+          }
+        }
+      }
+      else check1 = false;
+    }
+    else check1 = false;
+
+
+
+    string wild_user_hash_value = sctx->priv_user().str;
+    wild_user_hash_value.push_back('\0');
+    wild_user_hash_value.append("%");
+    wild_user_hash_value.push_back('\0');
+
+    if(acl_user_abac_hash != nullptr) 
+      if (acl_user_abac_hash->count(wild_user_hash_value)) {
+        ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
+        user_attribute_map user_map_2 = user_abac->attrib_map;
+
+        for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+          DBUG_PRINT("info",
+                   ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+        }
+    }
+
+    if(acl_user_abac_hash != nullptr ) {
+      if((acl_user_abac_hash->count(wild_user_hash_value))) {
+        ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
+
+        for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+          if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+            check2 = false; break;
+          }
+        }
+      }
+      else check2 = false;
+    }
+    else check2 = false;
+
+
+    bool check = check1 | check2;
+
+    if (!check) continue;
+
+    db_access |= rule_hash_it->second->access;
+    DBUG_PRINT("info",
+                   ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
+                    rule_hash_it->second->access, db_access, want_access));
+   }
+   DBUG_PRINT("info",
+             ("5 db_access: %lu  want_access: %lu", db_access, want_access));
+
+
+   /*
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   ######################################################################################################################
+   */
+
+   DBUG_PRINT("info",
              ("db_access: %lu  want_access: %lu", db_access, want_access));
 
   /*
@@ -2395,6 +2512,137 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
     my_error(ER_DBACCESS_DENIED_ERROR, MYF(0), sctx->priv_user().str,
              sctx->priv_host().str,
              (db ? db : (thd->db().str ? thd->db().str : "unknown")));
+  return true;
+}
+
+
+
+
+
+
+
+
+
+// abac rule in file implementation, iterating through all rules  
+bool check_table_abac_access(THD *thd, 
+  // ulong want_access, 
+  const char *db, const char *tname) {
+  // , ulong *save_priv) {
+  DBUG_TRACE;
+  Security_context *sctx = thd->security_context();
+  // ulong db_access=0;
+
+
+  DBUG_PRINT("info",
+               ("table: %s db: %s  user: %s  host: %s",tname, db, sctx->priv_user().str,
+                       sctx->priv_host().str));
+
+  Acl_cache_lock_guard acl_cache_lock(thd, Acl_cache_lock_mode::READ_MODE);
+  if (!acl_cache_lock.lock(false)) return (true);
+
+
+  if(abac_rule_hash != nullptr)
+  for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
+    bool check1 = true, check2 = true;
+
+    user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+    object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+
+    string user_hash_value = sctx->priv_user().str;
+    user_hash_value.push_back('\0');
+    user_hash_value.append(sctx->priv_host().str);
+    user_hash_value.push_back('\0');
+
+    if(acl_user_abac_hash != nullptr) 
+      if (acl_user_abac_hash->count(user_hash_value)) {
+        ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
+        user_attribute_map user_map_2 = user_abac->attrib_map;
+
+        for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+          DBUG_PRINT("info",
+                   ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+        }
+    }
+
+    if(acl_user_abac_hash != nullptr ) {
+      if((acl_user_abac_hash->count(user_hash_value))) {
+        ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
+
+        for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+          if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+            check1 = false; break;
+          }
+        }
+      }
+      else check1 = false;
+    }
+    else check1 = false;
+
+
+
+    string wild_user_hash_value = sctx->priv_user().str;
+    wild_user_hash_value.push_back('\0');
+    wild_user_hash_value.append("%");
+    wild_user_hash_value.push_back('\0');
+
+    if(acl_user_abac_hash != nullptr) 
+      if (acl_user_abac_hash->count(wild_user_hash_value)) {
+        ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
+        user_attribute_map user_map_2 = user_abac->attrib_map;
+
+        for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+          DBUG_PRINT("info",
+                   ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+        }
+    }
+
+    if(acl_user_abac_hash != nullptr ) {
+      if((acl_user_abac_hash->count(wild_user_hash_value))) {
+        ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
+
+        for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+          if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+            check2 = false; break;
+          }
+        }
+      }
+      else check2 = false;
+    }
+    else check2 = false;
+
+
+    bool check = check1 | check2;
+
+    if(!check) continue;
+
+    string tname_hash_value = string(db);
+    tname_hash_value.push_back('\0');
+    tname_hash_value.append(string(tname));
+    tname_hash_value.push_back('\0');
+
+    
+    check = true;
+    if(abac_object_hash != nullptr ) {
+      if((abac_object_hash->count(tname_hash_value)) ) {
+        ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
+        for (auto object_map_it = object_map.begin(); 
+            object_map_it != object_map.end(); object_map_it++) {
+          if (object_map_it->second != object_hash_it->get_attribute_value(object_map_it->first)) {
+            check = false; break;
+          }
+        }
+      }
+      else check = false;
+    }
+    else check = false;
+    if (!check) continue;
+
+    // *save_priv |= rule_hash_it->second->access;
+  }
+
+  acl_cache_lock.unlock();
+
+
   return true;
 }
 
@@ -2477,10 +2725,154 @@ bool check_table_access(THD *thd, ulong requirements, TABLE_LIST *tables,
 
     thd->set_security_context(sctx);
 
+    // if(check_table_abac_access(thd, want_access, table_ref->get_db_name(), table_ref->get_table_name(),
+    //                             &table_ref->grant.privilege))
+    // if(check_table_abac_access(thd,
+    //  // want_access, 
+    //  table_ref->get_db_name(), table_ref->get_table_name()
+    //  // , &table_ref->grant.privilege
+    //  )) goto deny;
+
+    /*
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+    */
+    ulong db_access=0;
+    if(abac_rule_hash != nullptr)
+    for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
+      bool check1 = true, check2 = true;
+
+      DBUG_PRINT("info",
+                     ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
+                      rule_hash_it->second->access, table_ref->grant.privilege, want_access));
+
+      user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+      object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+
+      string user_hash_value = sctx->priv_user().str;
+      user_hash_value.push_back('\0');
+      user_hash_value.append(sctx->priv_host().str);
+      user_hash_value.push_back('\0');
+
+      if(acl_user_abac_hash != nullptr) 
+        if (acl_user_abac_hash->count(user_hash_value)) {
+          ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
+          user_attribute_map user_map_2 = user_abac->attrib_map;
+
+          for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+            DBUG_PRINT("info",
+                     ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+          }
+      }
+
+      if(acl_user_abac_hash != nullptr ) {
+        if((acl_user_abac_hash->count(user_hash_value))) {
+          ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
+
+          for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+            if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+              check1 = false; break;
+            }
+          }
+        }
+        else check1 = false;
+      }
+      else check1 = false;
+
+
+
+      string wild_user_hash_value = sctx->priv_user().str;
+      wild_user_hash_value.push_back('\0');
+      wild_user_hash_value.append("%");
+      wild_user_hash_value.push_back('\0');
+
+      if(acl_user_abac_hash != nullptr) 
+        if (acl_user_abac_hash->count(wild_user_hash_value)) {
+          ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
+          user_attribute_map user_map_2 = user_abac->attrib_map;
+
+          for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+            DBUG_PRINT("info",
+                     ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+          }
+      }
+
+      if(acl_user_abac_hash != nullptr ) {
+        if((acl_user_abac_hash->count(wild_user_hash_value))) {
+          ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
+
+          for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+            if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+              check2 = false; break;
+            }
+          }
+        }
+        else check2 = false;
+      }
+      else check2 = false;
+
+
+      bool check = check1 | check2;
+
+      if(!check) continue;
+
+      string tname_hash_value = string(table_ref->get_db_name());
+      tname_hash_value.push_back('\0');
+      tname_hash_value.append(string(table_ref->get_table_name()));
+      tname_hash_value.push_back('\0');
+
+      
+      check = true;
+      if(abac_object_hash != nullptr ) {
+        if((abac_object_hash->count(tname_hash_value)) ) {
+          ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
+          for (auto object_map_it = object_map.begin(); 
+              object_map_it != object_map.end(); object_map_it++) {
+            if (object_map_it->second != object_hash_it->get_attribute_value(object_map_it->first)) {
+              check = false; break;
+            }
+          }
+        }
+        else check = false;
+      }
+      else check = false;
+      if (!check) continue;
+
+      db_access |= rule_hash_it->second->access;
+      DBUG_PRINT("info",
+                     ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
+                      rule_hash_it->second->access, db_access, want_access));
+    }
+    /*
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+     ######################################################################################################################
+    */  
+
     if (check_access(thd, want_access, table_ref->get_db_name(),
                      &table_ref->grant.privilege, &table_ref->grant.m_internal,
-                     false, no_errors))
-      goto deny;
+                     false, no_errors)) {
+        table_ref->grant.privilege |= db_access;
+        goto deny;
+    }
+    table_ref->grant.privilege |= db_access;
   }
   thd->set_security_context(backup_ctx);
 
