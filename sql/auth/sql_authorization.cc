@@ -1408,23 +1408,25 @@ void get_sp_access_map(
     }
   }
 
-  for (const auto &key_and_value : *abac_table_proc_priv_hash) {
-    GRANT_NAME *abac_proc_grant = key_and_value.second;
-    std::string user = std::string(acl_user->user);
-    std::string host_name = std::string(acl_user->host.get_host());
-    if (user == abac_proc_grant->user && 
-        host_name == std::string(abac_proc_grant->host.get_host())) { // Need to implement case insensitive checking
-      if (abac_proc_grant->privs != 0) {
-        String q_name;
-        append_identifier(&q_name, abac_proc_grant->db,
-                          strlen(abac_proc_grant->db));
-        q_name.append(".");
-        append_identifier(&q_name, abac_proc_grant->tname,
-                          strlen(abac_proc_grant->tname));
-        (*sp_map)[std::string(q_name.c_ptr())] |= abac_proc_grant->privs;
-      }
-    }
-  }
+  // for (const auto &key_and_value : *abac_table_proc_priv_hash) {
+  //   GRANT_NAME *abac_proc_grant = key_and_value.second;
+  //   std::string user = std::string(acl_user->user);
+  //   std::string host_name = std::string(acl_user->host.get_host());
+  //   if (user == abac_proc_grant->user && 
+  //       host_name == std::string(abac_proc_grant->host.get_host())) { // Need to implement case insensitive checking
+  //     if (abac_proc_grant->privs != 0) {
+  //       String q_name;
+  //       append_identifier(&q_name, abac_proc_grant->db,
+  //                         strlen(abac_proc_grant->db));
+  //       q_name.append(".");
+  //       append_identifier(&q_name, abac_proc_grant->tname,
+  //                         strlen(abac_proc_grant->tname));
+  //       (*sp_map)[std::string(q_name.c_ptr())] |= abac_proc_grant->privs;
+  //     }
+  //   }
+  // }
+
+  //  yha change krna h
 }
 
 void get_table_access_map(ACL_USER *acl_user, Table_access_map *table_map) {
@@ -1510,29 +1512,31 @@ void get_table_access_map(ACL_USER *acl_user, Table_access_map *table_map) {
   //     }
   //   }
   // }
-  for (const auto &key_and_value : *abac_table_priv_hash) {
-    GRANT_TABLE *abac_grant = key_and_value.second;
-    std::string user = std::string(acl_user->user);
-    std::string host_name = std::string(acl_user->host.get_host());
-    if (user == abac_grant->user && 
-        host_name == std::string(abac_grant->host.get_host())) { // Need to implement case insensitive checking
-      if (abac_grant->privs != 0) {
-        String q_name;
-        const THD *thd = table_map->get_thd();
-        append_identifier(thd, &q_name, abac_grant->db,
-                          strlen(abac_grant->db));
-        q_name.append(".");
-        append_identifier(thd, &q_name, abac_grant->tname,
-                          strlen(abac_grant->tname));
-        Grant_table_aggregate agg = (*table_map)[std::string(q_name.c_ptr())];
-        // std::string q_name = abac_grant->db_name + "." + abac_grant->table_name;
-        // Grant_table_aggregate agg = (*table_map)[q_name];
-        agg.table_access |= abac_grant->privs;
-        agg.cols |= abac_grant->privs;
-        (*table_map)[std::string(q_name.c_ptr())] = agg;
-      }
-    }
-  }
+  // for (const auto &key_and_value : *abac_table_priv_hash) {
+  //   GRANT_TABLE *abac_grant = key_and_value.second;
+  //   std::string user = std::string(acl_user->user);
+  //   std::string host_name = std::string(acl_user->host.get_host());
+  //   if (user == abac_grant->user && 
+  //       host_name == std::string(abac_grant->host.get_host())) { // Need to implement case insensitive checking
+  //     if (abac_grant->privs != 0) {
+  //       String q_name;
+  //       const THD *thd = table_map->get_thd();
+  //       append_identifier(thd, &q_name, abac_grant->db,
+  //                         strlen(abac_grant->db));
+  //       q_name.append(".");
+  //       append_identifier(thd, &q_name, abac_grant->tname,
+  //                         strlen(abac_grant->tname));
+  //       Grant_table_aggregate agg = (*table_map)[std::string(q_name.c_ptr())];
+  //       // std::string q_name = abac_grant->db_name + "." + abac_grant->table_name;
+  //       // Grant_table_aggregate agg = (*table_map)[q_name];
+  //       agg.table_access |= abac_grant->privs;
+  //       agg.cols |= abac_grant->privs;
+  //       (*table_map)[std::string(q_name.c_ptr())] = agg;
+  //     }
+  //   }
+  // }
+
+  //  yha change krna h
 }
 
 void get_dynamic_privileges(ACL_USER *acl_user, Dynamic_privileges *acl) {
@@ -4142,22 +4146,22 @@ bool mysql_grant(THD *thd, const char *db, List<LEX_USER> &list, ulong rights,
   return error;
 }
 
-// Function to search for key in abac_table_priv_hash map
-GRANT_TABLE *abac_table_search(std::string user, 
-    std::string db_name, std::string table_name) {
-  std::string key;
-  key.append(user);
-  key.push_back('\0');
-  key.append(db_name);
-  key.push_back('\0');
-  key.append(table_name);
-  key.push_back('\0');
-  GRANT_TABLE *found = nullptr;
-  if (abac_table_priv_hash->count(key)) {
-    found = (*abac_table_priv_hash)[key];
-  }
-  return found;
-}
+// // Function to search for key in abac_table_priv_hash map
+// GRANT_TABLE *abac_table_search(std::string user, 
+//     std::string db_name, std::string table_name) {
+//   std::string key;
+//   key.append(user);
+//   key.push_back('\0');
+//   key.append(db_name);
+//   key.push_back('\0');
+//   key.append(table_name);
+//   key.push_back('\0');
+//   GRANT_TABLE *found = nullptr;
+//   if (abac_table_priv_hash->count(key)) {
+//     found = (*abac_table_priv_hash)[key];
+//   }
+//   return found;
+// }
 
 /**
   @brief Check table level grants
@@ -4318,20 +4322,218 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
           sctx->host().str, sctx->ip().str, db_name, sctx->priv_user().str,
           t_ref->get_table_name(), false);
 
-      GRANT_TABLE *abac_grant = abac_table_search(std::string(sctx->priv_user().str),
-                 std::string(db_name), std::string(t_ref->get_table_name()));
+      // GRANT_TABLE *abac_grant = abac_table_search(std::string(sctx->priv_user().str),
+      //            std::string(db_name), std::string(t_ref->get_table_name()));
 
-      if (!grant_table && !abac_grant) {
+      //  yha change krna h
+
+      // ulong db_access=0;
+      // if(abac_rule_hash != nullptr)
+      // for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
+      //   bool check1 = true, check2 = true;
+
+      //   DBUG_PRINT("info",
+      //                  ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
+      //                   rule_hash_it->second->access, table_ref->grant.privilege, want_access));
+
+      //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+      //   object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+
+      //   string user_hash_value = sctx->priv_user().str;
+      //   user_hash_value.push_back('\0');
+      //   user_hash_value.append(sctx->priv_host().str);
+      //   user_hash_value.push_back('\0');
+
+      //   if(acl_user_abac_hash != nullptr) 
+      //     if (acl_user_abac_hash->count(user_hash_value)) {
+      //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
+      //       user_attribute_map user_map_2 = user_abac->attrib_map;
+
+      //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+      //         DBUG_PRINT("info",
+      //                  ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+      //       }
+      //   }
+
+      //   if(acl_user_abac_hash != nullptr ) {
+      //     if((acl_user_abac_hash->count(user_hash_value))) {
+      //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
+
+      //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+      //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+      //           check1 = false; break;
+      //         }
+      //       }
+      //     }
+      //     else check1 = false;
+      //   }
+      //   else check1 = false;
+
+
+
+      //   string wild_user_hash_value = sctx->priv_user().str;
+      //   wild_user_hash_value.push_back('\0');
+      //   wild_user_hash_value.append("%");
+      //   wild_user_hash_value.push_back('\0');
+
+      //   if(acl_user_abac_hash != nullptr) 
+      //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
+      //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
+      //       user_attribute_map user_map_2 = user_abac->attrib_map;
+
+      //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+      //         DBUG_PRINT("info",
+      //                  ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+      //       }
+      //   }
+
+      //   if(acl_user_abac_hash != nullptr ) {
+      //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
+      //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
+
+      //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+      //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+      //           check2 = false; break;
+      //         }
+      //       }
+      //     }
+      //     else check2 = false;
+      //   }
+      //   else check2 = false;
+
+
+      //   bool check = check1 | check2;
+
+      //   if(!check) continue;
+
+      //   string tname_hash_value = string(db_name);
+      //   tname_hash_value.push_back('\0');
+      //   tname_hash_value.append(string(table_ref->get_table_name()));
+      //   tname_hash_value.push_back('\0');
+
+        
+      //   check = true;
+      //   if(abac_object_hash != nullptr ) {
+      //     if((abac_object_hash->count(tname_hash_value)) ) {
+      //       ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
+      //       for (auto object_map_it = object_map.begin(); 
+      //           object_map_it != object_map.end(); object_map_it++) {
+      //         if (object_map_it->second != object_hash_it->get_attribute_value(object_map_it->first)) {
+      //           check = false; break;
+      //         }
+      //       }
+      //     }
+      //     else check = false;
+      //   }
+      //   else check = false;
+      //   if (!check) continue;
+
+      //   db_access |= rule_hash_it->second->access;
+      //   DBUG_PRINT("info",
+      //                  ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
+      //                   rule_hash_it->second->access, db_access, want_access));
+      // }
+
+
+      // if(abac_rule_db_hash != nullptr)
+      // for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
+      //   bool check1 = true, check2 = true;
+
+      //   DBUG_PRINT("info",
+      //                  ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
+      //                   rule_hash_it->second->access, db_access, want_access));
+
+      //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+      //   // object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+
+      //   string user_hash_value = sctx->priv_user().str;
+      //   user_hash_value.push_back('\0');
+      //   user_hash_value.append(sctx->priv_host().str);
+      //   user_hash_value.push_back('\0');
+
+      //   if(acl_user_abac_hash != nullptr) 
+      //     if (acl_user_abac_hash->count(user_hash_value)) {
+      //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
+      //       user_attribute_map user_map_2 = user_abac->attrib_map;
+
+      //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+      //         DBUG_PRINT("info",
+      //                  ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+      //       }
+      //   }
+
+      //   if(acl_user_abac_hash != nullptr ) {
+      //     if((acl_user_abac_hash->count(user_hash_value))) {
+      //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
+
+      //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+      //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+      //           check1 = false; break;
+      //         }
+      //       }
+      //     }
+      //     else check1 = false;
+      //   }
+      //   else check1 = false;
+
+
+
+      //   string wild_user_hash_value = sctx->priv_user().str;
+      //   wild_user_hash_value.push_back('\0');
+      //   wild_user_hash_value.append("%");
+      //   wild_user_hash_value.push_back('\0');
+
+      //   if(acl_user_abac_hash != nullptr) 
+      //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
+      //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
+      //       user_attribute_map user_map_2 = user_abac->attrib_map;
+
+      //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
+      //         DBUG_PRINT("info",
+      //                  ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
+      //       }
+      //   }
+
+      //   if(acl_user_abac_hash != nullptr ) {
+      //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
+      //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
+
+      //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+      //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
+      //           check2 = false; break;
+      //         }
+      //       }
+      //     }
+      //     else check2 = false;
+      //   }
+      //   else check2 = false;
+
+
+      //   bool check = check1 | check2;
+
+      //   if (!check) continue;
+
+      //   db_access |= rule_hash_it->second->access;
+      //   DBUG_PRINT("info",
+      //                  ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
+      //                   rule_hash_it->second->access, db_access, want_access));
+      //  }
+       
+
+
+      // if (!grant_table && !abac_grant) {
+      if(!grant_table) {
         DBUG_PRINT("info",
                    ("Table %s didn't exist in the legacy table acl cache",
                     t_ref->get_table_name()));
         want_access &= ~t_ref->grant.privilege;
         goto err;  // No grants
-      } else if (!grant_table) {
-        grant_table = abac_grant;
-      } else if (grant_table && abac_grant) {
-        grant_table->privs |= abac_grant->privs;
-      }
+      } 
+      // else if (!grant_table) {
+      //   grant_table = abac_grant;
+      // } else if (grant_table && abac_grant) {
+      //   grant_table->privs |= abac_grant->privs;
+      // }
       /*
         For SHOW COLUMNS, SHOW INDEX it is enough to have some
         privileges on any column combination on the table.
@@ -4659,6 +4861,8 @@ static bool check_grant_db_routine(
         return false;
       }
     }  // end for
+
+    // yha change krna h
   }
 
   return true;
@@ -4723,53 +4927,57 @@ bool check_grant_db(THD *thd, const char *db) {
     }
   }
   //Add code here
-  for (auto key_and_value : *abac_table_priv_hash) {
-    GRANT_TABLE *grant_table = key_and_value.second;
-    if (grant_table->hash_key.compare(0, key.size(), key) == 0 &&
-        grant_table->host.compare_hostname(sctx->host().str, sctx->ip().str) &&
-        ((grant_table->privs | grant_table->cols) & TABLE_OP_ACLS)) {
-      error = false; /* Found match. */
-      DBUG_PRINT("info", ("Detected table level acl in abac_table_priv_hash"));
-      break;
-    }
-  }
+  // for (auto key_and_value : *abac_table_priv_hash) {
+  //   GRANT_TABLE *grant_table = key_and_value.second;
+  //   if (grant_table->hash_key.compare(0, key.size(), key) == 0 &&
+  //       grant_table->host.compare_hostname(sctx->host().str, sctx->ip().str) &&
+  //       ((grant_table->privs | grant_table->cols) & TABLE_OP_ACLS)) {
+  //     error = false; /* Found match. */
+  //     DBUG_PRINT("info", ("Detected table level acl in abac_table_priv_hash"));
+  //     break;
+  //   }
+  // }
+
+  //  yha change krna h
+
   if (error) {
     DBUG_PRINT("info", ("No table level acl in column_priv_hash; checking "
                         "for schema level acls"));
     error = check_grant_db_routine(thd, db, proc_priv_hash.get()) &&
             check_grant_db_routine(thd, db, func_priv_hash.get());
 
-    for (auto key_and_value : *abac_table_proc_priv_hash) {
-      GRANT_NAME *item = key_and_value.second;
+    // for (auto key_and_value : *abac_table_proc_priv_hash) {
+    //   GRANT_NAME *item = key_and_value.second;
 
-      if (strcmp(item->user, sctx->priv_user().str) == 0 &&
-          strcmp(item->db, db) == 0 &&
-          item->host.compare_hostname(sctx->host().str, sctx->ip().str)) {
-        // return false;
-        error = false;
-        break;
-      }
-    }
+    //   if (strcmp(item->user, sctx->priv_user().str) == 0 &&
+    //       strcmp(item->db, db) == 0 &&
+    //       item->host.compare_hostname(sctx->host().str, sctx->ip().str)) {
+    //     // return false;
+    //     error = false;
+    //     break;
+    //   }
+    // }
+            //  yha change krna h
   }
 
   return error;
 }
 
-GRANT_NAME *abac_table_proc_search(std::string user, 
-    std::string db_name, std::string table_name) {
-  std::string key;
-  key.append(user);
-  key.push_back('\0');
-  key.append(db_name);
-  key.push_back('\0');
-  key.append(table_name);
-  key.push_back('\0');
-  GRANT_NAME *found = nullptr;
-  if (abac_table_proc_priv_hash->count(key)) {
-    found = (*abac_table_proc_priv_hash)[key];
-  }
-  return found;
-}
+// GRANT_NAME *abac_table_proc_search(std::string user, 
+//     std::string db_name, std::string table_name) {
+//   std::string key;
+//   key.append(user);
+//   key.push_back('\0');
+//   key.append(db_name);
+//   key.push_back('\0');
+//   key.append(table_name);
+//   key.push_back('\0');
+//   GRANT_NAME *found = nullptr;
+//   if (abac_table_proc_priv_hash->count(key)) {
+//     found = (*abac_table_proc_priv_hash)[key];
+//   }
+//   return found;
+// }
 
 /****************************************************************************
   Check routine level grants
@@ -4830,14 +5038,16 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
                             "found %lu",
                             table->db, grant_proc->privs));
       }
-      if ((grant_proc =
-               abac_table_proc_search(std::string(user),
-                 std::string(table->db), std::string(table->table_name)))) {
-        table->grant.privilege |= grant_proc->privs;
-        DBUG_PRINT("info", ("Checking for routine acls in %s; "
-                            "found %lu",
-                            table->db, grant_proc->privs));
-      }
+      // if ((grant_proc =
+      //          abac_table_proc_search(std::string(user),
+      //            std::string(table->db), std::string(table->table_name)))) {
+      //   table->grant.privilege |= grant_proc->privs;
+      //   DBUG_PRINT("info", ("Checking for routine acls in %s; "
+      //                       "found %lu",
+      //                       table->db, grant_proc->privs));
+      // }
+
+      //  yha change krna h
     }
     if ((want_access & table->grant.privilege) != want_access) {
       want_access &= ~table->grant.privilege;
@@ -4894,10 +5104,12 @@ static bool check_routine_level_acl(THD *thd, const char *db, const char *name,
                                sctx->priv_user().str, name, is_proc, false)))
     no_routine_acl = !(grant_proc->privs & SHOW_PROC_ACLS);
 
-  if ((grant_proc =
-           abac_table_proc_search(std::string(sctx->priv_user().str),
-                 std::string(db), std::string(name))))
-    no_routine_acl = no_routine_acl  & (!(grant_proc->privs & SHOW_PROC_ACLS));
+  // if ((grant_proc =
+  //          abac_table_proc_search(std::string(sctx->priv_user().str),
+  //                std::string(db), std::string(name))))
+  //   no_routine_acl = no_routine_acl  & (!(grant_proc->privs & SHOW_PROC_ACLS));
+
+  //  yha change krna h
 
   return no_routine_acl;
 }
@@ -6009,12 +6221,16 @@ void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
       grant->grant_table =
           table_hash_search(sctx->host().str, sctx->ip().str, db, priv_user.str,
                             table, false); /* purecov: inspected */
-      GRANT_TABLE *abac_grant = abac_table_search(std::string(priv_user.str),
-                 std::string(db), std::string(table));
-      if(abac_grant != nullptr ) {
-        if(grant->grant_table != nullptr) grant->grant_table->privs |= abac_grant->privs;
-        else grant->grant_table = abac_grant;
-      }
+      // GRANT_TABLE *abac_grant = abac_table_search(std::string(priv_user.str),
+      //            std::string(db), std::string(table));
+      // if(abac_grant != nullptr ) {
+      //   if(grant->grant_table != nullptr) grant->grant_table->privs |= abac_grant->privs;
+      //   else grant->grant_table = abac_grant;
+      // }
+
+            //  yha change krna h
+
+            
       grant->version = grant_version;      /* purecov: inspected */
     }
     if (grant->grant_table != nullptr) {
@@ -8075,7 +8291,7 @@ bool check_system_user_privilege(THD *thd, List<LEX_USER> list) {
 
 bool mysql_create_rule(THD *thd, std::string rule_name, int privs, 
       attribute_value_list user_attributes, 
-          attribute_value_list object_attributes) {
+          attribute_value_list object_attributes, std::string weekday) {
   DBUG_TRACE;
   int ret;
   Save_and_Restore_binlog_format_state binlog_format_state(thd);
@@ -8132,6 +8348,15 @@ bool mysql_create_rule(THD *thd, std::string rule_name, int privs,
       my_error(ER_FAILED_CREATE_RULE, MYF(0));
       goto end;
     }
+    table = tables[ACL_TABLES::TABLE_POLICY_ENV].table;
+    // Insert new rule entry into policy env table
+    ret |= modify_policy_env_in_table(thd, table, rule_name, (weekday == "weekday")?1:0, false);
+    if (ret) {
+      errors = true;
+      // std::cout<<"Failed to add rule to policy table\n";
+      my_error(ER_FAILED_CREATE_RULE, MYF(0));
+      goto end;
+    }
     table = tables[ACL_TABLES::TABLE_POLICY_USER_AVAL].table;
     // Insert entries into policy_user_aval table
     List<LEX_STRING>::iterator it1, it2;
@@ -8175,7 +8400,7 @@ bool mysql_create_rule(THD *thd, std::string rule_name, int privs,
   return errors;
 }
 
-bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, int privs, attribute_value_list user_attributes) {
+bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, int privs, attribute_value_list user_attributes, std::string weekday) {
   DBUG_TRACE;
   int ret;
   Save_and_Restore_binlog_format_state binlog_format_state(thd);
@@ -8233,6 +8458,15 @@ bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, 
       errors = true;
       // std::cout<<"Failed to add rule to policy table\n";
       my_error(ER_FAILED_CREATE_RULE_DB, MYF(0));
+      goto end;
+    }
+    table = tables[ACL_TABLES::TABLE_POLICY_ENV].table;
+    // Insert new rule entry into policy env table
+    ret |= modify_policy_env_in_table(thd, table, rule_name, (weekday == "weekday")?1:0, false);
+    if (ret) {
+      errors = true;
+      // std::cout<<"Failed to add rule to policy table\n";
+      my_error(ER_FAILED_CREATE_RULE, MYF(0));
       goto end;
     }
     table = tables[ACL_TABLES::TABLE_POLICY_USER_AVAL].table;
@@ -8323,6 +8557,16 @@ bool mysql_delete_rule(THD *thd, std::string rule_name) {
         }
       }
 
+      table = tables[ACL_TABLES::TABLE_POLICY_ENV].table;
+      // Insert new rule entry into policy env table
+      ret |= modify_policy_env_in_table(thd, table, rule_name, rule->weekday, true);
+      if (ret) {
+        errors = true;
+        // std::cout<<"Failed to delete rule to policy ENV table\n";
+        my_error(ER_FAILED_CREATE_RULE, MYF(0));
+        goto end;
+      }
+
       table = tables[ACL_TABLES::TABLE_POLICY].table;
       // Delete rule from policy table
       ret |= modify_rule_in_table(thd, table, rule_name, rule->access, false, true);
@@ -8353,6 +8597,16 @@ bool mysql_delete_rule(THD *thd, std::string rule_name) {
       if (ret) {
         my_error(ER_FAILED_DELETE_RULE, MYF(0));
         errors = true;
+        goto end;
+      }
+
+      table = tables[ACL_TABLES::TABLE_POLICY_ENV].table;
+      // Insert new rule entry into policy env table
+      ret |= modify_policy_env_in_table(thd, table, rule_name, rule->weekday, true);
+      if (ret) {
+        errors = true;
+        // std::cout<<"Failed to add rule to policy table\n";
+        my_error(ER_FAILED_CREATE_RULE, MYF(0));
         goto end;
       }
 

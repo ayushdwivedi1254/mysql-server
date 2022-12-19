@@ -362,16 +362,16 @@ class Sql_cmd_create_rule : public Sql_cmd {
   int privs;
   attribute_value_list user_attrib_map;
   attribute_value_list object_attrib_map;
-  LEX_CSTRING db;
+  std::string weekday;
   public:
     explicit Sql_cmd_create_rule(std::string rule_name_arg,
                                 int privs_arg,
                                 attribute_value_list user_attrib_map_arg,
-                                attribute_value_list object_attrib_map_arg) 
+                                attribute_value_list object_attrib_map_arg, std::string weekday_arg) 
         : rule_name(rule_name_arg),
           privs(privs_arg),
           user_attrib_map(user_attrib_map_arg),
-          object_attrib_map(object_attrib_map_arg) {}
+          object_attrib_map(object_attrib_map_arg), weekday(weekday_arg) {}
 
     bool execute(THD *thd) override;
     enum_sql_command sql_command_code() const override {
@@ -384,15 +384,16 @@ class Sql_cmd_create_rule_db : public Sql_cmd {
   std::string db_name;
   int privs;
   attribute_value_list user_attrib_map;
+  std::string weekday;
   public:
     explicit Sql_cmd_create_rule_db(std::string rule_name_arg,
                                 std::string db_name_arg,
                                 int privs_arg,
-                                attribute_value_list user_attrib_map_arg) 
+                                attribute_value_list user_attrib_map_arg, std::string weekday_arg) 
         : rule_name(rule_name_arg),
           db_name(db_name_arg),
           privs(privs_arg),
-          user_attrib_map(user_attrib_map_arg) {}
+          user_attrib_map(user_attrib_map_arg), weekday(weekday_arg) {}
 
     bool execute(THD *thd) override;
     enum_sql_command sql_command_code() const override {

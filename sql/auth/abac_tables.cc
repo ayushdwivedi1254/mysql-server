@@ -61,6 +61,10 @@ class THD;
 #define MYSQL_POLICY_OBJECT_AVAL_FIELD_ATTRIB_NAME 1
 #define MYSQL_POLICY_OBJECT_AVAL_FIELD_VALUE 2
 
+#define MYSQL_POLICY_ENV_RULE_NAME 0
+#define MYSQL_POLICY_ENV_WEEKDAY 1
+
+
 #define MYSQL_OBJECT_ATTRIBUTES_ATTRIB_NAME 0
 #define MYSQL_USER_ATTRIBUTES_ATTRIB_NAME 0
 
@@ -155,6 +159,39 @@ bool modify_policy_db_in_table(THD *thd, TABLE *table, string rule_name,
 
 	table->field[MYSQL_POLICY_DB_RULE_NAME]->store(rule_name.c_str(), rule_name.size(), system_charset_info);
 	table->field[MYSQL_POLICY_DB_DB_NAME]->store(db_name.c_str(), db_name.size(), system_charset_info);
+
+	if (!delete_option)
+		ret = table->file->ha_write_row(table->record[0]);
+	else {
+		uchar user_key[MAX_KEY_LENGTH];
+		key_copy(user_key, table->record[0], table->key_info,
+           table->key_info->key_length);
+		ret = table->file->ha_index_read_idx_map(table->record[0], 0, user_key,
+                                           HA_WHOLE_KEY, HA_READ_KEY_EXACT);
+		if (ret != HA_ERR_KEY_NOT_FOUND) {
+			ret = table->file->ha_delete_row(table->record[0]);
+		}
+	}
+	return ret != 0;
+}
+
+bool modify_policy_env_in_table(THD *thd, TABLE *table, string rule_name, 
+									int weekday, bool delete_option) {
+	DBUG_TRACE;
+  int ret = 0;
+
+  Acl_table_intact table_intact(thd);
+
+  if (table_intact.check(table, ACL_TABLES::TABLE_POLICY_ENV)) return true;
+
+  table->use_all_columns();
+
+	table->field[MYSQL_POLICY_ENV_RULE_NAME]->store(rule_name.c_str(), rule_name.size(), system_charset_info);
+	
+	char weekday_field = (weekday) ? 'Y' : 'N';
+
+  	table->field[MYSQL_POLICY_ENV_WEEKDAY]->store(
+								&weekday_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
 
 	if (!delete_option)
 		ret = table->file->ha_write_row(table->record[0]);

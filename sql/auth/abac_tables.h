@@ -15,6 +15,8 @@ bool modify_policy_user_aval_in_table(THD *thd, TABLE *table, string rule_name,
 									string attrib, string value, bool delete_option);
 bool modify_policy_object_aval_in_table(THD *thd, TABLE *table, string rule_name,
 									string attrib, string value, bool delete_option);
+bool modify_policy_env_in_table(THD *thd, TABLE *table, string rule_name, 
+									int weekday, bool delete_option);
 bool modify_user_attribute_in_table(THD *thd, TABLE *table, string user_attrib, 
 									bool delete_option);
 bool modify_object_attribute_in_table(THD *thd, TABLE *table, string object_attrib, 

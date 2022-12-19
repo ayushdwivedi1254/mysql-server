@@ -141,6 +141,7 @@ malloc_unordered_map<string, GRANT_TABLE*> *abac_table_priv_hash;
 malloc_unordered_map<string, GRANT_NAME*> *abac_table_proc_priv_hash;
 malloc_unordered_map<string, ABAC_RULE_DB*> *abac_rule_db_hash;
 malloc_unordered_map<string, ABAC_RULE_DB*> *abac_rule_db_proc_hash;
+malloc_unordered_map<string, int> *abac_rule_env_hash;
 malloc_unordered_set<std::string> *user_attribute_set = nullptr;
 malloc_unordered_set<std::string> *object_attribute_set = nullptr;
 Db_access_map acl_db_map;
@@ -730,6 +731,10 @@ void ABAC_RULE::set_rule_name(string name_arg) {
   rule_name = name_arg;
 }
 
+void ABAC_RULE::set_weekday(int weekday_arg) {
+  weekday = weekday_arg;
+}
+
 void ABAC_RULE::set_access(int access_arg) {
   access = access_arg;
 }
@@ -753,6 +758,10 @@ std::string ABAC_RULE::get_object_attribute_value(std::string attrib) {
 
 void ABAC_RULE_DB::set_rule_name(string name_arg) {
   rule_name = name_arg;
+}
+
+void ABAC_RULE_DB::set_weekday(int weekday_arg) {
+  weekday = weekday_arg;
 }
 
 void ABAC_RULE_DB::set_access(int access_arg) {
@@ -1476,28 +1485,6 @@ ulong acl_get(THD *thd, const char *host, const char *ip, const char *user,
   /*
     Check if there are some access rights for database and user
   */
-  for (ACL_DB *acl_db = acl_dbs->begin(); acl_db != acl_dbs->end(); ++acl_db) {
-    DBUG_PRINT("info",
-             ("db_access: %lu  db_name:%s", acl_db->access, acl_db->db));
-    if (!acl_db->user || !strcmp(user, acl_db->user)) {
-      if (acl_db->host.compare_hostname(host, ip)) {
-        /*
-          Do the usual string comparision if partial_revokes is ON,
-          otherwise do the wildcard grant comparision
-        */
-        if (!acl_db->db ||
-            (db &&
-             (mysqld_partial_revokes()
-                  ? (!strcmp(db, acl_db->db))
-                  : (!wild_compare(db, strlen(db), acl_db->db,
-                                   strlen(acl_db->db), db_is_pattern))))) {
-          db_access |= acl_db->access;
-          // if (acl_db->host.get_host()) goto exit;  // Fully specified. Take it
-          // break;                                   /* purecov: tested */
-        }
-      }
-    }
-  }
   for (ACL_DB *acl_db = acl_dbs->begin(); acl_db != acl_dbs->end(); ++acl_db) {
     DBUG_PRINT("info",
              ("db_access: %lu  db_name:%s", acl_db->access, acl_db->db));
@@ -4134,223 +4121,240 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
     if (read_rec_errcode > 0) goto end;
   }
 
-  for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
-    for (auto user_hash_it = acl_user_abac_hash->begin(); 
-        user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
-      bool check = true;
-      user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-      object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-      // string hash_prefix = string(user_hash_it->second->user);
-      // hash_prefix.push_back('\0');
 
-      for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-        if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
-          check = false; break;
-        }
-      }
-      if (!check) continue;
-      for (auto object_hash_it = abac_object_hash->begin(); 
-          object_hash_it != abac_object_hash->end(); object_hash_it++) {
-        check = true;
-        for (auto object_map_it = object_map.begin(); 
-            object_map_it != object_map.end(); object_map_it++) {
-          if (object_map_it->second != object_hash_it->second->get_attribute_value(object_map_it->first)) {
-            check = false; break;
-          }
-        }
-        if (!check) continue;
-        // string hash = hash_prefix;
-        // hash.append(object_hash_it->second->db_name);
-        // hash.push_back('\0');
-        // hash.append(object_hash_it->second->table_name);
-        // hash.push_back('\0');
+  if (tables[8].table) {
+    iterator = init_table_iterator(thd, table = tables[8].table, false, false);
+    if (iterator == nullptr) goto end;
+    table->use_all_columns();
+    while (!(read_rec_errcode = iterator->Read())) {
+      string rule_name = string(get_field(&abac_memory, table->field[MYSQL_POLICY_ENV_RULE_NAME]));
 
-        // GRANT_TABLE *mem_check = new GRANT_TABLE(user_hash_it->second->host.hostname, 
-        //           object_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
-        //                     object_hash_it->second->table_name.c_str(), rule_hash_it->second->access, 0);
+      char *weekday = get_field(&abac_memory, table->field[MYSQL_POLICY_ENV_WEEKDAY]);
 
-        // if (!abac_table_priv_hash->count(mem_check->hash_key)) {
-        //   // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
-        //   //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
-        //   //               user_hash_it->second->host.hostname);
-          
-        //   // table_grant->privs |= rule_hash_it->second->access;
-        //   abac_table_priv_hash->emplace(mem_check->hash_key, mem_check);
-        // } else {
-        //   abac_table_priv_hash->at(mem_check->hash_key)->privs |= rule_hash_it->second->access;
-        // }
-      }
+      if(abac_rule_hash->count(rule_name))  (*abac_rule_hash)[rule_name]->set_weekday(weekday[0] == 'Y' ? 1 : 0);
+      else if(abac_rule_db_hash->count(rule_name)) (*abac_rule_db_hash)[rule_name]->set_weekday(weekday[0] == 'Y' ? 1 : 0);
     }
     iterator.reset();
     if (read_rec_errcode > 0) goto end;
   }
 
-    for (auto rule_hash_it = abac_rule_proc_hash->begin(); rule_hash_it != abac_rule_proc_hash->end(); rule_hash_it++) {
-    for (auto user_hash_it = acl_user_abac_hash->begin(); 
-        user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
-      bool check = true;
-      user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-      object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-      // string hash_prefix = string(user_hash_it->second->user);
-      // hash_prefix.push_back('\0');
+  // for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
+  //   for (auto user_hash_it = acl_user_abac_hash->begin(); 
+  //       user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
+  //     bool check = true;
+  //     user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+  //     object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+  //     // string hash_prefix = string(user_hash_it->second->user);
+  //     // hash_prefix.push_back('\0');
 
-      for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-        if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
-          check = false; break;
-        }
-      }
-      if (!check) continue;
-      for (auto object_hash_it = abac_object_hash->begin(); 
-          object_hash_it != abac_object_hash->end(); object_hash_it++) {
-        check = true;
-        for (auto object_map_it = object_map.begin(); 
-            object_map_it != object_map.end(); object_map_it++) {
-          if (object_map_it->second != object_hash_it->second->get_attribute_value(object_map_it->first)) {
-            check = false; break;
-          }
-        }
-        if (!check) continue;
-        // string hash = hash_prefix;
-        // hash.append(object_hash_it->second->db_name);
-        // hash.push_back('\0');
-        // hash.append(object_hash_it->second->table_name);
-        // hash.push_back('\0');
+  //     for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+  //       if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
+  //         check = false; break;
+  //       }
+  //     }
+  //     if (!check) continue;
+  //     for (auto object_hash_it = abac_object_hash->begin(); 
+  //         object_hash_it != abac_object_hash->end(); object_hash_it++) {
+  //       check = true;
+  //       for (auto object_map_it = object_map.begin(); 
+  //           object_map_it != object_map.end(); object_map_it++) {
+  //         if (object_map_it->second != object_hash_it->second->get_attribute_value(object_map_it->first)) {
+  //           check = false; break;
+  //         }
+  //       }
+  //       if (!check) continue;
+  //       // string hash = hash_prefix;
+  //       // hash.append(object_hash_it->second->db_name);
+  //       // hash.push_back('\0');
+  //       // hash.append(object_hash_it->second->table_name);
+  //       // hash.push_back('\0');
 
+  //       // GRANT_TABLE *mem_check = new GRANT_TABLE(user_hash_it->second->host.hostname, 
+  //       //           object_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
+  //       //                     object_hash_it->second->table_name.c_str(), rule_hash_it->second->access, 0);
 
-      // GRANT_NAME *mem_check = new GRANT_NAME(user_hash_it->second->host.hostname, 
-      //             object_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
-      //                       object_hash_it->second->table_name.c_str(), rule_hash_it->second->access, true);
-
-      //   if (!abac_table_proc_priv_hash->count(mem_check->hash_key)) {
-      //     // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
-      //     //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
-      //     //               user_hash_it->second->host.hostname);
+  //       // if (!abac_table_priv_hash->count(mem_check->hash_key)) {
+  //       //   // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
+  //       //   //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
+  //       //   //               user_hash_it->second->host.hostname);
           
-      //     // table_grant->privs |= rule_hash_it->second->access;
-      //     abac_table_proc_priv_hash->emplace(mem_check->hash_key, mem_check);
-      //   } else {
-      //     abac_table_proc_priv_hash->at(mem_check->hash_key)->privs |= rule_hash_it->second->access;
-      //   }
-      }
-    }
-    iterator.reset();
-    if (read_rec_errcode > 0) goto end;
-  }
+  //       //   // table_grant->privs |= rule_hash_it->second->access;
+  //       //   abac_table_priv_hash->emplace(mem_check->hash_key, mem_check);
+  //       // } else {
+  //       //   abac_table_priv_hash->at(mem_check->hash_key)->privs |= rule_hash_it->second->access;
+  //       // }
+  //     }
+  //   }
+  //   iterator.reset();
+  //   if (read_rec_errcode > 0) goto end;
+  // }
 
-  for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
-    for (auto user_hash_it = acl_user_abac_hash->begin(); 
-        user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
-      bool check = true;
-      user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-      // string hash_prefix = string(user_hash_it->second->user);
-      // hash_prefix.push_back('\0');
+  //   for (auto rule_hash_it = abac_rule_proc_hash->begin(); rule_hash_it != abac_rule_proc_hash->end(); rule_hash_it++) {
+  //   for (auto user_hash_it = acl_user_abac_hash->begin(); 
+  //       user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
+  //     bool check = true;
+  //     user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+  //     object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+  //     // string hash_prefix = string(user_hash_it->second->user);
+  //     // hash_prefix.push_back('\0');
 
-      for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-        if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
-          check = false; break;
-        }
-      }
-      if (!check) continue;
-
-      // string hash = hash_prefix;
-      // hash.append(object_hash_it->second->db_name);
-      // hash.push_back('\0');
-      // hash.append(object_hash_it->second->table_name);
-      // hash.push_back('\0');
-
-      ACL_DB db;
-      db.host.update_hostname(user_hash_it->second->host.hostname);
-      string db_str = rule_hash_it->second->db_name;
-      // char db_char[db_str.length() + 1];
-      // strcpy(db_char, db_str.c_str());
-      // db.db = &db_str[0];
-      db.db = strdup(db_str.c_str());
-      db.user = user_hash_it->second->user;
-      db.access = rule_hash_it->second->access;
-
-      DBUG_PRINT("info", ("db_access: %lu   db: %s", db.access, db.db));
+  //     for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+  //       if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
+  //         check = false; break;
+  //       }
+  //     }
+  //     if (!check) continue;
+  //     for (auto object_hash_it = abac_object_hash->begin(); 
+  //         object_hash_it != abac_object_hash->end(); object_hash_it++) {
+  //       check = true;
+  //       for (auto object_map_it = object_map.begin(); 
+  //           object_map_it != object_map.end(); object_map_it++) {
+  //         if (object_map_it->second != object_hash_it->second->get_attribute_value(object_map_it->first)) {
+  //           check = false; break;
+  //         }
+  //       }
+  //       if (!check) continue;
+  //       // string hash = hash_prefix;
+  //       // hash.append(object_hash_it->second->db_name);
+  //       // hash.push_back('\0');
+  //       // hash.append(object_hash_it->second->table_name);
+  //       // hash.push_back('\0');
 
 
-      db.sort = get_sort(3, db.host.get_host(), db.db, db.user);
-      acl_dbs->push_back(db);
+  //     // GRANT_NAME *mem_check = new GRANT_NAME(user_hash_it->second->host.hostname, 
+  //     //             object_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
+  //     //                       object_hash_it->second->table_name.c_str(), rule_hash_it->second->access, true);
 
-      std::string tname;
-      tname.append(1, '*');
-
-      // GRANT_TABLE *mem_check_db = new GRANT_TABLE(user_hash_it->second->host.hostname, 
-      //             rule_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
-      //                       tname.c_str(), rule_hash_it->second->access, 0);
-
-      //   if (!abac_table_priv_hash->count(mem_check_db->hash_key)) {
-      //     // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
-      //     //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
-      //     //               user_hash_it->second->host.hostname);
+  //     //   if (!abac_table_proc_priv_hash->count(mem_check->hash_key)) {
+  //     //     // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
+  //     //     //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
+  //     //     //               user_hash_it->second->host.hostname);
           
-      //     // table_grant->privs |= rule_hash_it->second->access;
-      //     abac_table_priv_hash->emplace(mem_check_db->hash_key, mem_check_db);
-      //   } else {
-      //     abac_table_priv_hash->at(mem_check_db->hash_key)->privs |= rule_hash_it->second->access;
-      //   }
-    }
-    iterator.reset();
-    if (read_rec_errcode > 0) goto end;
-  }
+  //     //     // table_grant->privs |= rule_hash_it->second->access;
+  //     //     abac_table_proc_priv_hash->emplace(mem_check->hash_key, mem_check);
+  //     //   } else {
+  //     //     abac_table_proc_priv_hash->at(mem_check->hash_key)->privs |= rule_hash_it->second->access;
+  //     //   }
+  //     }
+  //   }
+  //   iterator.reset();
+  //   if (read_rec_errcode > 0) goto end;
+  // }
 
-  for (auto rule_hash_it = abac_rule_db_proc_hash->begin(); rule_hash_it != abac_rule_db_proc_hash->end(); rule_hash_it++) {
-    for (auto user_hash_it = acl_user_abac_hash->begin(); 
-        user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
-      bool check = true;
-      user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-      // string hash_prefix = string(user_hash_it->second->user);
-      // hash_prefix.push_back('\0');
+  // for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
+  //   for (auto user_hash_it = acl_user_abac_hash->begin(); 
+  //       user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
+  //     bool check = true;
+  //     user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+  //     // string hash_prefix = string(user_hash_it->second->user);
+  //     // hash_prefix.push_back('\0');
 
-      for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-        if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
-          check = false; break;
-        }
-      }
-      if (!check) continue;
+  //     for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+  //       if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
+  //         check = false; break;
+  //       }
+  //     }
+  //     if (!check) continue;
 
-      // string hash = hash_prefix;
-      // hash.append(object_hash_it->second->db_name);
-      // hash.push_back('\0');
-      // hash.append(object_hash_it->second->table_name);
-      // hash.push_back('\0');
+  //     // string hash = hash_prefix;
+  //     // hash.append(object_hash_it->second->db_name);
+  //     // hash.push_back('\0');
+  //     // hash.append(object_hash_it->second->table_name);
+  //     // hash.push_back('\0');
 
-      ACL_DB db;
-      db.host.update_hostname(user_hash_it->second->host.hostname);
-      string db_str = rule_hash_it->second->db_name;
-      // char db_char[db_str.length() + 1];
-      // strcpy(db_char, db_str.c_str());
-      // db.db = &db_str[0];
-      db.db = strdup(db_str.c_str());
-      db.user = user_hash_it->second->user;
-      db.access = rule_hash_it->second->access;
+  //     ACL_DB db;
+  //     db.host.update_hostname(user_hash_it->second->host.hostname);
+  //     string db_str = rule_hash_it->second->db_name;
+  //     // char db_char[db_str.length() + 1];
+  //     // strcpy(db_char, db_str.c_str());
+  //     // db.db = &db_str[0];
+  //     db.db = strdup(db_str.c_str());
+  //     db.user = user_hash_it->second->user;
+  //     db.access = rule_hash_it->second->access;
 
-      db.sort = get_sort(3, db.host.get_host(), db.db, db.user);
-      acl_dbs->push_back(db);
+  //     DBUG_PRINT("info", ("db_access: %lu   db: %s", db.access, db.db));
 
-      std::string tname;
-      tname.append(1, '*');
 
-       // GRANT_NAME *mem_check = new GRANT_NAME(user_hash_it->second->host.hostname, 
-       //            rule_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
-       //                      tname.c_str(), rule_hash_it->second->access, true);
+  //     db.sort = get_sort(3, db.host.get_host(), db.db, db.user);
+  //     acl_dbs->push_back(db);
 
-       //  if (!abac_table_proc_priv_hash->count(mem_check->hash_key)) {
-       //    // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
-       //    //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
-       //    //               user_hash_it->second->host.hostname);
+  //     std::string tname;
+  //     tname.append(1, '*');
+
+  //     // GRANT_TABLE *mem_check_db = new GRANT_TABLE(user_hash_it->second->host.hostname, 
+  //     //             rule_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
+  //     //                       tname.c_str(), rule_hash_it->second->access, 0);
+
+  //     //   if (!abac_table_priv_hash->count(mem_check_db->hash_key)) {
+  //     //     // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
+  //     //     //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
+  //     //     //               user_hash_it->second->host.hostname);
           
-       //    // table_grant->privs |= rule_hash_it->second->access;
-       //    abac_table_proc_priv_hash->emplace(mem_check->hash_key, mem_check);
-       //  } else {
-       //    abac_table_proc_priv_hash->at(mem_check->hash_key)->privs |= rule_hash_it->second->access;
-       //  }
-    }
-    iterator.reset();
-    if (read_rec_errcode > 0) goto end;
-  }
+  //     //     // table_grant->privs |= rule_hash_it->second->access;
+  //     //     abac_table_priv_hash->emplace(mem_check_db->hash_key, mem_check_db);
+  //     //   } else {
+  //     //     abac_table_priv_hash->at(mem_check_db->hash_key)->privs |= rule_hash_it->second->access;
+  //     //   }
+  //   }
+  //   iterator.reset();
+  //   if (read_rec_errcode > 0) goto end;
+  // }
+
+  // for (auto rule_hash_it = abac_rule_db_proc_hash->begin(); rule_hash_it != abac_rule_db_proc_hash->end(); rule_hash_it++) {
+  //   for (auto user_hash_it = acl_user_abac_hash->begin(); 
+  //       user_hash_it != acl_user_abac_hash->end(); user_hash_it++) {
+  //     bool check = true;
+  //     user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+  //     // string hash_prefix = string(user_hash_it->second->user);
+  //     // hash_prefix.push_back('\0');
+
+  //     for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+  //       if (user_hash_it->second->get_attribute_value(user_map_it->first) != user_map_it->second) {
+  //         check = false; break;
+  //       }
+  //     }
+  //     if (!check) continue;
+
+  //     // string hash = hash_prefix;
+  //     // hash.append(object_hash_it->second->db_name);
+  //     // hash.push_back('\0');
+  //     // hash.append(object_hash_it->second->table_name);
+  //     // hash.push_back('\0');
+
+  //     ACL_DB db;
+  //     db.host.update_hostname(user_hash_it->second->host.hostname);
+  //     string db_str = rule_hash_it->second->db_name;
+  //     // char db_char[db_str.length() + 1];
+  //     // strcpy(db_char, db_str.c_str());
+  //     // db.db = &db_str[0];
+  //     db.db = strdup(db_str.c_str());
+  //     db.user = user_hash_it->second->user;
+  //     db.access = rule_hash_it->second->access;
+
+  //     db.sort = get_sort(3, db.host.get_host(), db.db, db.user);
+  //     acl_dbs->push_back(db);
+
+  //     std::string tname;
+  //     tname.append(1, '*');
+
+  //      // GRANT_NAME *mem_check = new GRANT_NAME(user_hash_it->second->host.hostname, 
+  //      //            rule_hash_it->second->db_name.c_str(), user_hash_it->second->user, 
+  //      //                      tname.c_str(), rule_hash_it->second->access, true);
+
+  //      //  if (!abac_table_proc_priv_hash->count(mem_check->hash_key)) {
+  //      //    // ABAC_TABLE_GRANT *table_grant = new ABAC_TABLE_GRANT(object_hash_it->second->db_name,
+  //      //    //           string(user_hash_it->second->user), object_hash_it->second->table_name, 
+  //      //    //               user_hash_it->second->host.hostname);
+          
+  //      //    // table_grant->privs |= rule_hash_it->second->access;
+  //      //    abac_table_proc_priv_hash->emplace(mem_check->hash_key, mem_check);
+  //      //  } else {
+  //      //    abac_table_proc_priv_hash->at(mem_check->hash_key)->privs |= rule_hash_it->second->access;
+  //      //  }
+  //   }
+  //   iterator.reset();
+  //   if (read_rec_errcode > 0) goto end;
+  // }
   return_val = false;
 
   end:
@@ -4368,6 +4372,8 @@ void abac_free() {
   acl_user_abac_hash = nullptr;
   delete abac_rule_hash;
   abac_rule_hash = nullptr;
+  delete abac_rule_env_hash;
+  abac_rule_env_hash = nullptr;
   delete abac_rule_proc_hash;
   abac_rule_proc_hash = nullptr;
   delete abac_table_proc_priv_hash;
@@ -4415,6 +4421,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   malloc_unordered_map<string, ACL_USER_ABAC*> *old_acl_user_abac_hash = nullptr;
   malloc_unordered_map<string, ABAC_OBJECT*> *old_abac_object_hash = nullptr;
   malloc_unordered_map<string, ABAC_RULE*> *old_abac_rule_hash = nullptr;
+  malloc_unordered_map<string, int> *old_abac_rule_env_hash = nullptr;
   malloc_unordered_map<string, GRANT_TABLE*> *old_abac_table_priv_hash = nullptr;
   malloc_unordered_map<string, ABAC_RULE*> *old_abac_rule_proc_hash = nullptr;
   malloc_unordered_map<string, GRANT_NAME*> *old_abac_table_proc_priv_hash = nullptr;
@@ -4427,7 +4434,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   /* Don't do anything if running with --skip-grant-tables */
   if (!initialized) return false;
 
-  TABLE_LIST tables[8] = {
+  TABLE_LIST tables[9] = {
 
       /*
         Acquiring strong MDL lock allows to avoid deadlock and timeout errors
@@ -4447,7 +4454,9 @@ bool abac_reload(THD *thd, bool mdl_locked) {
       
       TABLE_LIST("mysql", "policy_object_aval", TL_READ, MDL_SHARED_READ_ONLY),
 
-      TABLE_LIST("mysql", "policy_db", TL_READ, MDL_SHARED_READ_ONLY)};
+      TABLE_LIST("mysql", "policy_db", TL_READ, MDL_SHARED_READ_ONLY),
+
+      TABLE_LIST("mysql", "policy_env", TL_READ, MDL_SHARED_READ_ONLY)};
 
   tables[0].next_local = tables[0].next_global = tables + 1;
   tables[1].next_local = tables[1].next_global = tables + 2;
@@ -4456,13 +4465,14 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   tables[4].next_local = tables[4].next_global = tables + 5;
   tables[5].next_local = tables[5].next_global = tables + 6;
   tables[6].next_local = tables[6].next_global = tables + 7;
+  tables[7].next_local = tables[7].next_global = tables + 8;
   tables[0].open_type = tables[1].open_type = tables[2].open_type =
       tables[3].open_type = tables[4].open_type = 
-          tables[5].open_type = tables[6].open_type = tables[7].open_type =
+          tables[5].open_type = tables[6].open_type = tables[7].open_type = tables[8].open_type =
             OT_BASE_ONLY;
   tables[0].open_strategy = tables[1].open_strategy = tables[2].open_strategy =
       tables[3].open_strategy = tables[4].open_strategy = 
-          tables[5].open_strategy = tables[6].open_strategy = tables[7].open_strategy = 
+          tables[5].open_strategy = tables[6].open_strategy = tables[7].open_strategy = tables[8].open_strategy = 
               TABLE_LIST::OPEN_IF_EXISTS;
 
   if (open_and_lock_tables(thd, tables, flags)) {
@@ -4477,6 +4487,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   
   old_abac_object_hash = abac_object_hash;
   old_abac_rule_hash = abac_rule_hash;
+  old_abac_rule_env_hash = abac_rule_env_hash;
   old_abac_rule_proc_hash = abac_rule_proc_hash;
   old_acl_user_abac_hash = acl_user_abac_hash;
   old_abac_table_priv_hash = abac_table_priv_hash;
@@ -4489,6 +4500,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
 
   abac_object_hash = new malloc_unordered_map<string, ABAC_OBJECT*>(key_memory_acl_memex);
   abac_rule_hash = new malloc_unordered_map<string, ABAC_RULE*>(key_memory_acl_memex);
+  abac_rule_env_hash = new malloc_unordered_map<string, int>(key_memory_acl_memex);
   abac_table_priv_hash = new malloc_unordered_map<string, GRANT_TABLE*>(key_memory_acl_memex);
   abac_rule_proc_hash = new malloc_unordered_map<string, ABAC_RULE*>(key_memory_acl_memex);
   abac_table_proc_priv_hash = new malloc_unordered_map<string, GRANT_NAME*>(key_memory_acl_memex);
@@ -4502,6 +4514,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
     abac_free();
     abac_object_hash = old_abac_object_hash;
     abac_rule_hash = old_abac_rule_hash;
+    abac_rule_env_hash = old_abac_rule_env_hash;
     abac_table_priv_hash = old_abac_table_priv_hash;
     abac_rule_proc_hash = old_abac_rule_proc_hash;
     abac_table_proc_priv_hash = old_abac_table_proc_priv_hash;
@@ -4514,6 +4527,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   } else {
     delete old_abac_object_hash;
     delete old_abac_rule_hash;
+    delete old_abac_rule_env_hash;
     delete old_abac_table_priv_hash;
     delete old_abac_rule_proc_hash;
     delete old_abac_table_proc_priv_hash;

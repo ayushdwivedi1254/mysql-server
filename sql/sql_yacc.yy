@@ -1370,6 +1370,8 @@ void warn_about_deprecated_binary(THD *thd)
 
 %token<lexer.keyword> GTID_ONLY_SYM 1199                       /* MYSQL */
 
+%token<lexer.keyword> WEEKDAY_SYM 1200
+%token<lexer.keyword> ENVIRONMENT_SYM 1201
 
 /*
   Precedence rules used to resolve the ambiguity when using keywords as idents
@@ -3427,15 +3429,15 @@ create_resource_group_stmt:
 create_rule_stmt:
           CREATE RULE_SYM ident FOR_SYM privilege_list
           OF_SYM USER ATTRIBUTE_SYM '(' user_attribute_list ')' AND_SYM 
-          RESOURCE_SYM ATTRIBUTE_SYM '(' object_attribute_list ')' 
+          RESOURCE_SYM ATTRIBUTE_SYM '(' object_attribute_list ')' AND_SYM ENVIRONMENT_SYM ATTRIBUTE_SYM '(' ident ')'
           {
-            $$ = NEW_PTN PT_create_rule(string($3.str), $5, $10, $16);
+            $$ = NEW_PTN PT_create_rule(string($3.str), $5, $10, $16, string($22.str));
           }
           |
           CREATE RULE_SYM ident FOR_SYM privilege_create_list
-          OF_SYM USER ATTRIBUTE_SYM '(' user_attribute_list ')' ON_SYM schema
+          OF_SYM USER ATTRIBUTE_SYM '(' user_attribute_list ')' ON_SYM schema AND_SYM ENVIRONMENT_SYM ATTRIBUTE_SYM '(' ident ')'
           {
-            $$ = NEW_PTN PT_create_rule_db(string($3.str), string($13.str), $5, $10);
+            $$ = NEW_PTN PT_create_rule_db(string($3.str), string($13.str), $5, $10, string($15.str));
           }
         ;
 
