@@ -735,6 +735,11 @@ void ABAC_RULE::set_weekday(int weekday_arg) {
   weekday = weekday_arg;
 }
 
+void ABAC_RULE::set_daytime(int daytime_arg) {
+  daytime = daytime_arg;
+}
+
+
 void ABAC_RULE::set_access(int access_arg) {
   access = access_arg;
 }
@@ -762,6 +767,10 @@ void ABAC_RULE_DB::set_rule_name(string name_arg) {
 
 void ABAC_RULE_DB::set_weekday(int weekday_arg) {
   weekday = weekday_arg;
+}
+
+void ABAC_RULE_DB::set_daytime(int daytime_arg) {
+  daytime = daytime_arg;
 }
 
 void ABAC_RULE_DB::set_access(int access_arg) {
@@ -4027,6 +4036,8 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
       char *execute_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_EXECUTE_PRIV]);
       char *alter_proc_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_ALTER_PROC_PRIV]);
       char *trigger_priv = get_field(&abac_memory, table->field[MYSQL_POLICY_TRIGGER_PRIV]);
+      char *weekday = get_field(&abac_memory, table->field[MYSQL_POLICY_WEEKDAY]);
+      char *daytime = get_field(&abac_memory, table->field[MYSQL_POLICY_DAYTIME]);
       char *db_level = get_field(&abac_memory, table->field[MYSQL_POLICY_DB_LEVEL]);
 
       if (select_priv[0] == 'Y') access |= SELECT_ACL;
@@ -4047,6 +4058,9 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
 
         abac_rule_db->set_access(access);
 
+        abac_rule_db->set_weekday(weekday[0] == 'Y' ? 1 : 0);
+        abac_rule_db->set_daytime(daytime[0] == 'Y' ? 1 : 0);
+
         if(access & SHOW_PROC_ACLS) abac_rule_db_proc_hash->emplace(rule_name, abac_rule_db);
         else abac_rule_db_hash->emplace(rule_name, abac_rule_db);
       }
@@ -4055,6 +4069,9 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
         abac_rule->set_rule_name(rule_name);
 
         abac_rule->set_access(access);
+
+        abac_rule->set_weekday(weekday[0] == 'Y' ? 1 : 0);
+        abac_rule->set_daytime(daytime[0] == 'Y' ? 1 : 0);
 
         if(access & SHOW_PROC_ACLS) abac_rule_proc_hash->emplace(rule_name, abac_rule);
         else abac_rule_hash->emplace(rule_name, abac_rule);
@@ -4116,23 +4133,6 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
 
       if(abac_rule_db_hash->count(rule_name))  (*abac_rule_db_hash)[rule_name]->set_db(db_name);
       else if(abac_rule_db_proc_hash->count(rule_name)) (*abac_rule_db_proc_hash)[rule_name]->set_db(db_name);
-    }
-    iterator.reset();
-    if (read_rec_errcode > 0) goto end;
-  }
-
-
-  if (tables[8].table) {
-    iterator = init_table_iterator(thd, table = tables[8].table, false, false);
-    if (iterator == nullptr) goto end;
-    table->use_all_columns();
-    while (!(read_rec_errcode = iterator->Read())) {
-      string rule_name = string(get_field(&abac_memory, table->field[MYSQL_POLICY_ENV_RULE_NAME]));
-
-      char *weekday = get_field(&abac_memory, table->field[MYSQL_POLICY_ENV_WEEKDAY]);
-
-      if(abac_rule_hash->count(rule_name))  (*abac_rule_hash)[rule_name]->set_weekday(weekday[0] == 'Y' ? 1 : 0);
-      else if(abac_rule_db_hash->count(rule_name)) (*abac_rule_db_hash)[rule_name]->set_weekday(weekday[0] == 'Y' ? 1 : 0);
     }
     iterator.reset();
     if (read_rec_errcode > 0) goto end;
@@ -4434,7 +4434,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   /* Don't do anything if running with --skip-grant-tables */
   if (!initialized) return false;
 
-  TABLE_LIST tables[9] = {
+  TABLE_LIST tables[8] = {
 
       /*
         Acquiring strong MDL lock allows to avoid deadlock and timeout errors
@@ -4454,9 +4454,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
       
       TABLE_LIST("mysql", "policy_object_aval", TL_READ, MDL_SHARED_READ_ONLY),
 
-      TABLE_LIST("mysql", "policy_db", TL_READ, MDL_SHARED_READ_ONLY),
-
-      TABLE_LIST("mysql", "policy_env", TL_READ, MDL_SHARED_READ_ONLY)};
+      TABLE_LIST("mysql", "policy_db", TL_READ, MDL_SHARED_READ_ONLY)};
 
   tables[0].next_local = tables[0].next_global = tables + 1;
   tables[1].next_local = tables[1].next_global = tables + 2;
@@ -4465,14 +4463,13 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   tables[4].next_local = tables[4].next_global = tables + 5;
   tables[5].next_local = tables[5].next_global = tables + 6;
   tables[6].next_local = tables[6].next_global = tables + 7;
-  tables[7].next_local = tables[7].next_global = tables + 8;
   tables[0].open_type = tables[1].open_type = tables[2].open_type =
       tables[3].open_type = tables[4].open_type = 
-          tables[5].open_type = tables[6].open_type = tables[7].open_type = tables[8].open_type =
+          tables[5].open_type = tables[6].open_type = tables[7].open_type =
             OT_BASE_ONLY;
   tables[0].open_strategy = tables[1].open_strategy = tables[2].open_strategy =
       tables[3].open_strategy = tables[4].open_strategy = 
-          tables[5].open_strategy = tables[6].open_strategy = tables[7].open_strategy = tables[8].open_strategy = 
+          tables[5].open_strategy = tables[6].open_strategy = tables[7].open_strategy = 
               TABLE_LIST::OPEN_IF_EXISTS;
 
   if (open_and_lock_tables(thd, tables, flags)) {

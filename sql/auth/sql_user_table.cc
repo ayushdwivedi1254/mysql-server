@@ -94,7 +94,7 @@
 #include "violite.h"
 
 /* Acl table names. Keep in sync with ACL_TABLES */
-static const int MAX_ACL_TABLE_NAMES = 19;
+static const int MAX_ACL_TABLE_NAMES = 18;
 static_assert(MAX_ACL_TABLE_NAMES == ACL_TABLES::LAST_ENTRY,
               "Keep number of table names in sync with ACL table enum");
 
@@ -107,8 +107,7 @@ static const char *ACL_TABLE_NAMES[MAX_ACL_TABLE_NAMES] = {
     "user_attributes",    "user_attrib_val", 
     "object_attributes",  "object_attrib_val",
     "policy",             "policy_user_aval",
-    "policy_object_aval", "policy_env",
-    "policy_db"};
+    "policy_object_aval", "policy_db"};
 
 static const TABLE_FIELD_TYPE mysql_db_table_fields[MYSQL_DB_FIELD_COUNT] = {
     {{STRING_WITH_LEN("Host")}, {STRING_WITH_LEN("char(255)")}, {nullptr, 0}},
@@ -563,7 +562,13 @@ static const TABLE_FIELD_TYPE
          {STRING_WITH_LEN("utf8")}},
         {{STRING_WITH_LEN("Trigger_priv")},
          {STRING_WITH_LEN("enum('N','Y')")},
-         {STRING_WITH_LEN("utf8")}},  
+         {STRING_WITH_LEN("utf8")}},
+        {{STRING_WITH_LEN("Weekday")},
+         {STRING_WITH_LEN("enum('N','Y')")},
+         {STRING_WITH_LEN("utf8")}},
+        {{STRING_WITH_LEN("Daytime")},
+         {STRING_WITH_LEN("enum('N','Y')")},
+         {STRING_WITH_LEN("utf8")}},    
         {{STRING_WITH_LEN("Db_level")},
          {STRING_WITH_LEN("enum('N','Y')")},
          {STRING_WITH_LEN("utf8")}}   
@@ -593,16 +598,6 @@ static const TABLE_FIELD_TYPE
         {{STRING_WITH_LEN("Object_attrib_val")},
           {STRING_WITH_LEN("varchar(10)")},
           {nullptr, 0}}
-    };
-
-static const TABLE_FIELD_TYPE 
-    mysql_policy_env_table_fields[MYSQL_POLICY_ENV_FIELD_COUNT] = {
-        {{STRING_WITH_LEN("Rule_name")},
-          {STRING_WITH_LEN("varchar(20)")},
-          {nullptr, 0}},
-        {{STRING_WITH_LEN("Weekday")},
-         {STRING_WITH_LEN("enum('N','Y')")},
-         {STRING_WITH_LEN("utf8")}}
     };
 
 static const TABLE_FIELD_TYPE 

@@ -251,7 +251,6 @@ void System_tables::add_remaining_dd_tables() {
   register_table("policy", system);
   register_table("policy_user_aval", system);
   register_table("policy_object_aval", system);
-  register_table("policy_env", system);
   register_table("policy_db", system);
   /*
     MTR tests expects following tables to be created in the 'mysql' tablespace.

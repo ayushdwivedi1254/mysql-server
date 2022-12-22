@@ -48,7 +48,9 @@ class THD;
 #define MYSQL_POLICY_FIELD_EXECUTE_PRIV 9
 #define MYSQL_POLICY_FIELD_ALTER_PROC_PRIV 10
 #define MYSQL_POLICY_FIELD_TRIGGER_PRIV 11
-#define MYSQL_POLICY_FIELD_DB_LEVEL 12
+#define MYSQL_POLICY_FIELD_WEEKDAY 12
+#define MYSQL_POLICY_FIELD_DAYTIME 13
+#define MYSQL_POLICY_FIELD_DB_LEVEL 14
 
 #define MYSQL_POLICY_DB_RULE_NAME 0
 #define MYSQL_POLICY_DB_DB_NAME 1
@@ -60,10 +62,6 @@ class THD;
 #define MYSQL_POLICY_OBJECT_AVAL_FIELD_RULE_NAME 0
 #define MYSQL_POLICY_OBJECT_AVAL_FIELD_ATTRIB_NAME 1
 #define MYSQL_POLICY_OBJECT_AVAL_FIELD_VALUE 2
-
-#define MYSQL_POLICY_ENV_RULE_NAME 0
-#define MYSQL_POLICY_ENV_WEEKDAY 1
-
 
 #define MYSQL_OBJECT_ATTRIBUTES_ATTRIB_NAME 0
 #define MYSQL_USER_ATTRIBUTES_ATTRIB_NAME 0
@@ -79,7 +77,7 @@ class THD;
 #define MYSQL_OBJECT_ATTRIB_VAL_ATTRIB_VAL 3
 
 bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
-												int privs, bool db_level_option, bool delete_option) {
+												int privs, int weekday, int daytime, bool db_level_option, bool delete_option) {
   DBUG_TRACE;
   int ret = 0;
 
@@ -105,6 +103,8 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 	char alter_proc_field = (privs & ALTER_PROC_ACL) ? 'Y' : 'N';
 	char trigger_field = (privs & TRIGGER_ACL) ? 'Y' : 'N';
 	char db_level = (db_level_option) ? 'Y' : 'N';
+	char weekday_field = (weekday) ? 'Y' : 'N';
+	char daytime_field = (daytime) ? 'Y' : 'N';
 
   table->field[MYSQL_POLICY_FIELD_SELECT_PRIV]->store(
 								&select_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
@@ -128,6 +128,10 @@ bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name,
 								&alter_proc_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
   table->field[MYSQL_POLICY_FIELD_TRIGGER_PRIV]->store(
 								&trigger_field, 1, system_charset_info, CHECK_FIELD_IGNORE);  
+  table->field[MYSQL_POLICY_FIELD_WEEKDAY]->store(
+								&weekday_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
+  table->field[MYSQL_POLICY_FIELD_DAYTIME]->store(
+								&daytime_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
   table->field[MYSQL_POLICY_FIELD_DB_LEVEL]->store(
 								&db_level, 1, system_charset_info, CHECK_FIELD_IGNORE); 
 
@@ -159,39 +163,6 @@ bool modify_policy_db_in_table(THD *thd, TABLE *table, string rule_name,
 
 	table->field[MYSQL_POLICY_DB_RULE_NAME]->store(rule_name.c_str(), rule_name.size(), system_charset_info);
 	table->field[MYSQL_POLICY_DB_DB_NAME]->store(db_name.c_str(), db_name.size(), system_charset_info);
-
-	if (!delete_option)
-		ret = table->file->ha_write_row(table->record[0]);
-	else {
-		uchar user_key[MAX_KEY_LENGTH];
-		key_copy(user_key, table->record[0], table->key_info,
-           table->key_info->key_length);
-		ret = table->file->ha_index_read_idx_map(table->record[0], 0, user_key,
-                                           HA_WHOLE_KEY, HA_READ_KEY_EXACT);
-		if (ret != HA_ERR_KEY_NOT_FOUND) {
-			ret = table->file->ha_delete_row(table->record[0]);
-		}
-	}
-	return ret != 0;
-}
-
-bool modify_policy_env_in_table(THD *thd, TABLE *table, string rule_name, 
-									int weekday, bool delete_option) {
-	DBUG_TRACE;
-  int ret = 0;
-
-  Acl_table_intact table_intact(thd);
-
-  if (table_intact.check(table, ACL_TABLES::TABLE_POLICY_ENV)) return true;
-
-  table->use_all_columns();
-
-	table->field[MYSQL_POLICY_ENV_RULE_NAME]->store(rule_name.c_str(), rule_name.size(), system_charset_info);
-	
-	char weekday_field = (weekday) ? 'Y' : 'N';
-
-  	table->field[MYSQL_POLICY_ENV_WEEKDAY]->store(
-								&weekday_field, 1, system_charset_info, CHECK_FIELD_IGNORE);
 
 	if (!delete_option)
 		ret = table->file->ha_write_row(table->record[0]);

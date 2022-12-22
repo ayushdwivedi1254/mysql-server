@@ -9658,6 +9658,9 @@ ER_INVALID_USER_ATTRIBUTE
 ER_INVALID_RESOURCE_ATTRIBUTE
   eng "Invalid resource attribute : %s."
 
+ER_INVALID_ENVIRONMENT_ATTRIBUTE
+  eng "Invalid environment attribute : %s."
+
 ER_FAILED_USER_ATTRIBUTE_GRANT
   eng "Failed to grant attribute to user '%s'@'%s'."
 

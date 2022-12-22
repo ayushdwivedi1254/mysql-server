@@ -2156,12 +2156,12 @@ bool Sql_cmd_alter_user_default_role::execute(THD *thd) {
 
 bool Sql_cmd_create_rule::execute(THD *thd) {
   DBUG_TRACE;
-  return mysql_create_rule(thd, rule_name, privs, user_attrib_map, object_attrib_map, weekday);
+  return mysql_create_rule(thd, rule_name, privs, user_attrib_map, object_attrib_map, weekday, daytime);
 }
 
 bool Sql_cmd_create_rule_db::execute(THD *thd) {
   DBUG_TRACE;
-  return mysql_create_rule_db(thd, rule_name, db_name, privs, user_attrib_map, weekday);
+  return mysql_create_rule_db(thd, rule_name, db_name, privs, user_attrib_map, weekday, daytime);
 }
 
 bool Sql_cmd_delete_rule::execute(THD *thd) {

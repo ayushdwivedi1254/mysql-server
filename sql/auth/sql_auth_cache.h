@@ -381,9 +381,11 @@ class ABAC_RULE {
     user_attribute_map user_attrib_map;
     object_attribute_map object_attrib_map;
     int weekday;
+    int daytime;
     void set_rule_name(std::string name_arg);
     void set_access(int access_arg);
     void set_weekday(int weekday_arg);
+    void set_daytime(int daytime_arg);
     void set_user_attribute(std::string attrib, std::string value);
     void set_object_attribute(std::string attrib, std::string value);
     std::string get_user_attribute_value(std::string attrib);
@@ -397,8 +399,10 @@ class ABAC_RULE_DB {
     user_attribute_map user_attrib_map;
     std::string db_name;
     int weekday;
+    int daytime;
     void set_rule_name(std::string name_arg);
     void set_weekday(int weekday_arg);
+    void set_daytime(int daytime_arg);
     void set_access(int access_arg);
     void set_db(std::string db_name_arg);
     void set_user_attribute(std::string attrib, std::string value);

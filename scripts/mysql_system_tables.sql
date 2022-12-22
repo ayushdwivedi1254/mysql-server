@@ -247,6 +247,8 @@ SET @cmd = "CREATE TABLE IF NOT EXISTS policy (
   Execute_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Alter_proc_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Trigger_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
+  Weekday enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
+  Daytime enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   Db_level enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL
 ) engine=InnoDB STATS_PERSISTENT=0 CHARACTER SET utf8 COLLATE utf8_bin comment='ABAC Policies' ROW_FORMAT=DYNAMIC TABLESPACE=mysql";
 SET @str = CONCAT(@cmd, " ENCRYPTION='", @is_mysql_encrypted, "'");
@@ -287,18 +289,6 @@ SET @cmd = "CREATE TABLE IF NOT EXISTS policy_object_aval (
 	FOREIGN KEY (Rule_name) REFERENCES policy(Rule_name) ON DELETE CASCADE,
 	FOREIGN KEY (Object_attrib_name) REFERENCES object_attributes(Attrib_name) ON DELETE CASCADE
 ) engine=InnoDB STATS_PERSISTENT=0 CHARACTER SET utf8 COLLATE utf8_bin comment='Policy definitions for object attributes' ROW_FORMAT=DYNAMIC TABLESPACE=mysql";
-SET @str = CONCAT(@cmd, " ENCRYPTION='", @is_mysql_encrypted, "'");
-PREPARE stmt FROM @str;
-EXECUTE stmt;
-DROP PREPARE stmt;
-
-SET @cmd = "CREATE TABLE IF NOT EXISTS policy_env_val ( 
-  Rule_name varchar(20), 
-  Weekday enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
-  Object_attrib_val varchar(10) CHARACTER SET ASCII NOT NULL,
-  PRIMARY KEY (Rule_name),
-  FOREIGN KEY (Rule_name) REFERENCES policy(Rule_name) ON DELETE CASCADE
-) engine=InnoDB STATS_PERSISTENT=0 CHARACTER SET utf8 COLLATE utf8_bin comment='Policy Environment values' ROW_FORMAT=DYNAMIC TABLESPACE=mysql";
 SET @str = CONCAT(@cmd, " ENCRYPTION='", @is_mysql_encrypted, "'");
 PREPARE stmt FROM @str;
 EXECUTE stmt;

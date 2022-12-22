@@ -2887,8 +2887,8 @@ class PT_create_rule final : public Parse_tree_root {
   public:
   PT_create_rule(string rule_name, int privs, 
       attribute_value_list user_attributes, 
-          attribute_value_list object_attributes, string weekday) : sql_cmd(rule_name, privs,
-              user_attributes, object_attributes, weekday) {}
+          attribute_value_list object_attributes, string weekday, string daytime) : sql_cmd(rule_name, privs,
+              user_attributes, object_attributes, weekday, daytime) {}
 
   Sql_cmd *make_cmd(THD *thd) override;
 };
@@ -2897,8 +2897,8 @@ class PT_create_rule_db final : public Parse_tree_root {
   Sql_cmd_create_rule_db sql_cmd;
   public:
   PT_create_rule_db(string rule_name, string db_name, 
-    int privs, attribute_value_list user_attributes, string weekday ) : sql_cmd(rule_name, db_name,
-               privs, user_attributes, weekday) {}
+    int privs, attribute_value_list user_attributes, string weekday, string daytime) : sql_cmd(rule_name, db_name,
+               privs, user_attributes, weekday, daytime) {}
 
   Sql_cmd *make_cmd(THD *thd) override;
 };

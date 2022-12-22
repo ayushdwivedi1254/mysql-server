@@ -8,15 +8,14 @@ using namespace std;
 class THD;
 struct TABLE;
 
-bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name, int privs, bool db_level_option, bool delete_option);
+bool modify_rule_in_table(THD *thd, TABLE *table, string rule_name, int privs, int weekday, int daytime,  
+									bool db_level_option, bool delete_option);
 bool modify_policy_db_in_table(THD *thd, TABLE *table, string rule_name, 
 									string db_name, bool delete_option);
 bool modify_policy_user_aval_in_table(THD *thd, TABLE *table, string rule_name, 
 									string attrib, string value, bool delete_option);
 bool modify_policy_object_aval_in_table(THD *thd, TABLE *table, string rule_name,
 									string attrib, string value, bool delete_option);
-bool modify_policy_env_in_table(THD *thd, TABLE *table, string rule_name, 
-									int weekday, bool delete_option);
 bool modify_user_attribute_in_table(THD *thd, TABLE *table, string user_attrib, 
 									bool delete_option);
 bool modify_object_attribute_in_table(THD *thd, TABLE *table, string object_attrib, 

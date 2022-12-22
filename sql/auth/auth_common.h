@@ -396,6 +396,8 @@ enum mysql_policy {
   MYSQL_POLICY_EXECUTE_PRIV,
   MYSQL_POLICY_ALTER_PROC_PRIV,
   MYSQL_POLICY_TRIGGER_PRIV,
+  MYSQL_POLICY_WEEKDAY,
+  MYSQL_POLICY_DAYTIME,
   MYSQL_POLICY_DB_LEVEL,
   MYSQL_POLICY_FIELD_COUNT
 };
@@ -404,12 +406,6 @@ enum mysql_policy_db {
   MYSQL_POLICY_DB_RULE_NAME = 0,
   MYSQL_POLICY_DB_DB_NAME,
   MYSQL_POLICY_DB_FIELD_COUNT
-};
-
-enum mysql_policy_env {
-  MYSQL_POLICY_ENV_RULE_NAME = 0,
-  MYSQL_POLICY_ENV_WEEKDAY,
-  MYSQL_POLICY_ENV_FIELD_COUNT
 };
 
 enum mysql_policy_user_aval_table_field {
@@ -928,9 +924,9 @@ bool mysql_revoke_role(THD *thd, const List<LEX_USER> *users,
                        const List<LEX_USER> *roles);
 bool mysql_create_rule(THD *thd, std::string rule_name, int privs, 
       attribute_value_list user_attributes, 
-          attribute_value_list object_attributes, std::string weekday);
+          attribute_value_list object_attributes, std::string weekday, std::string daytime);
 bool mysql_create_rule_db(THD *thd, std::string rule_name, std::string db_name, int privs,
-      attribute_value_list user_attributes,std::string weekday);
+      attribute_value_list user_attributes,std::string weekday, std::string daytime);
 bool mysql_delete_rule(THD *thd, std::string rule_name);
 bool mysql_create_user_attribute(THD *thd, std::string user_attrib);
 bool mysql_create_object_attribute(THD *thd, std::string object_attrib);
