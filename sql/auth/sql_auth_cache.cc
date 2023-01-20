@@ -144,6 +144,7 @@ malloc_unordered_map<string, ABAC_RULE_DB*> *abac_rule_db_proc_hash;
 malloc_unordered_map<string, int> *abac_rule_env_hash;
 malloc_unordered_set<std::string> *user_attribute_set = nullptr;
 malloc_unordered_set<std::string> *object_attribute_set = nullptr;
+malloc_unordered_map<std::string, ABAC_TREE_NODE*> *abac_tree;
 Db_access_map acl_db_map;
 Default_roles *g_default_roles = nullptr;
 std::vector<Role_id> *g_mandatory_roles = nullptr;
@@ -3911,6 +3912,183 @@ bool assert_acl_cache_write_lock(THD *thd) {
                                                       "", MDL_EXCLUSIVE);
 }
 
+void build_abac_tree(ABAC_TREE_NODE* root, std::unordered_map<std::string, ABAC_RULE*> *abac_rules) {
+  std::unordered_map<std::string, int> freq_attrib_map;
+  int max_freq = 0;
+  std::string max_freq_key;
+  std::string attrib_name, attrib_val;
+
+  // DBUG_PRINT("info",
+  //   ("before building tree, root : %d    abac_rules : %d", root == nullptr, abac_rules == nullptr));
+  if(abac_rules == nullptr) return;
+  // if(root != nullptr) return;
+
+  for (auto rule_hash_it = abac_rules->begin(); rule_hash_it != abac_rules->end(); rule_hash_it++) {
+    user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+    object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+
+    for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
+      std::string key = user_map_it->first;
+      key.push_back(':');
+      key.append(user_map_it->second);
+
+      freq_attrib_map[key] ++;
+
+      if(max_freq < freq_attrib_map[key] ) {
+        max_freq = freq_attrib_map[key];
+        max_freq_key = key;
+        attrib_name = user_map_it->first;
+        attrib_val = user_map_it->second;
+      }
+    }
+
+    for (auto object_map_it = object_map.begin(); object_map_it != object_map.end(); object_map_it++) {
+      std::string key = object_map_it->first;
+      key.push_back(':');
+      key.append(object_map_it->second);
+
+      freq_attrib_map[key] ++;
+
+      if(max_freq < freq_attrib_map[key] ) {
+        max_freq = freq_attrib_map[key];
+        max_freq_key = key;
+        attrib_name = object_map_it->first;
+        attrib_val = object_map_it->second;
+      }
+    }
+
+    if(rule_hash_it->second->weekday != -1) {
+      std::string k1 = "weekday";
+      k1.push_back(':');
+      k1.append((rule_hash_it->second->weekday?"weekday":"weekend"));
+  
+      freq_attrib_map[k1] ++;
+  
+      if(max_freq < freq_attrib_map[k1] ) {
+        max_freq = freq_attrib_map[k1];
+        max_freq_key = k1;
+        attrib_name = "weekday";
+        attrib_val = (rule_hash_it->second->weekday?"weekday":"weekend");
+      }
+    }
+
+    if(rule_hash_it->second->daytime != -1) {
+      std::string k2 = "daytime";
+      k2.push_back(':');
+      k2.append((rule_hash_it->second->daytime?"day":"night"));
+  
+  
+      freq_attrib_map[k2] ++;
+  
+      if(max_freq < freq_attrib_map[k2] ) {
+        max_freq = freq_attrib_map[k2];
+        max_freq_key = k2;
+        attrib_name = "daytime";
+        attrib_val = (rule_hash_it->second->daytime?"day":"night");
+      }
+    }
+  }
+
+  std::unordered_map<std::string, ABAC_RULE*> abac_rules_left;
+  std::unordered_map<std::string, ABAC_RULE*> abac_rules_right;
+  
+
+  for (auto rule_hash_it = abac_rules->begin(); rule_hash_it != abac_rules->end(); rule_hash_it++) {
+    user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
+    object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
+
+    bool check = false;
+
+    if(user_map.count(attrib_name) && user_map[attrib_name] == attrib_val) {
+      check = true;
+      
+      rule_hash_it->second->user_attrib_map.erase(attrib_name);
+      abac_rules_left.emplace(rule_hash_it->first, rule_hash_it->second);
+    }
+
+    if(check) continue;
+
+    if(object_map.count(attrib_name) && object_map[attrib_name] == attrib_val) {
+      check = true;
+      
+      rule_hash_it->second->object_attrib_map.erase(attrib_name);
+      abac_rules_left.emplace(rule_hash_it->first, rule_hash_it->second);
+    }
+
+
+    if(check) continue;
+
+    std::string k1 = "weekday";
+    k1.push_back(':');
+    k1.append((rule_hash_it->second->weekday?"weekday":"weekend"));
+
+    if(max_freq_key == k1 && rule_hash_it->second->weekday != -1) {
+      check = true;
+
+      rule_hash_it->second->weekday = -1;
+      abac_rules_left.emplace(rule_hash_it->first, rule_hash_it->second);
+    }
+
+    if(check) continue;
+
+
+    std::string k2 = "daytime";
+    k2.push_back(':');
+    k2.append((rule_hash_it->second->daytime?"day":"night"));
+
+
+    if(max_freq_key == k2 && rule_hash_it->second->daytime != -1) {
+      check = true;
+
+      rule_hash_it->second->daytime = -1;
+      abac_rules_left.emplace(rule_hash_it->first, rule_hash_it->second);
+    }
+
+    if(check) continue;
+
+    if(rule_hash_it->second->weekday != -1 || rule_hash_it->second->daytime != -1 ||
+      rule_hash_it->second->user_attrib_map.size() || rule_hash_it->second->object_attrib_map.size()) 
+        abac_rules_right.emplace(rule_hash_it->first, rule_hash_it->second);
+  }
+
+  DBUG_PRINT("info",
+    ("before building tree, max_freq_key : %s, attrib_name: %s, attrib_val: %s, left: %d, right: %d",
+     max_freq_key.c_str(), attrib_name.c_str(), attrib_val.c_str(), (int)abac_rules_left.size(), (int)abac_rules_right.size()));
+
+  ABAC_TREE_NODE* node = root;
+
+  node->attrib_name = attrib_name;
+  node->attrib_val = attrib_val;
+
+  node->left = new ABAC_TREE_NODE();
+
+  bool last = true;
+  int temp_access = 0;
+  for (auto it = abac_rules_left.begin(); it != abac_rules_left.end(); it ++) {
+    if(((int)it->second->user_attrib_map.size() + (int)it->second->object_attrib_map.size() + 
+          ((int)it->second->weekday != -1) + ((int)it->second->daytime != -1)) != 0) 
+          last = false;
+    else temp_access |= it->second->access;
+  }
+
+  if(last) node->left->access = temp_access;
+  else build_abac_tree(node->left, &abac_rules_left);
+
+  // if(abac_rules_left.size()) {
+  //   auto it = abac_rules_left.begin(); 
+  //   if(((int)it->second->user_attrib_map.size() + (int)it->second->object_attrib_map.size() + 
+  //         ((int)it->second->weekday != -1) + ((int)it->second->daytime != -1)) == 0) 
+  //         node->left->access = it->second->access;
+  //   else build_abac_tree(node->left, &abac_rules_left);
+  // }
+  
+  // if(abac_rules_left.size() > 1) build_abac_tree(node->left, &abac_rules_left);
+
+  node->right = new ABAC_TREE_NODE();
+  if(abac_rules_right.size()) build_abac_tree(node->right, &abac_rules_right);
+
+}
+
 bool abac_load(THD *thd, TABLE_LIST *tables) {
   TABLE *table;
   unique_ptr_destroy_only<RowIterator> iterator;
@@ -3934,6 +4112,23 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
   int read_rec_errcode;
 
   init_sql_alloc(key_memory_acl_mem, &abac_memory, ACL_ALLOC_BLOCK_SIZE, 0);
+
+  
+  ///////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////
+
+  // std::unordered_map<std::string, ABAC_RULE*> abac_rules;
+  // std::unordered_map<std::string, ABAC_RULE*> abac_db_rules;
+  std::unordered_map<std::string, std::unordered_map<std::string, ABAC_RULE*>> abac_db_rules; // db_name, {rule name, rule}
+
+  ABAC_TREE_NODE *global_abac_tree = new ABAC_TREE_NODE();
+  abac_tree->emplace("global", global_abac_tree);
+
+  ///////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////
+  ///////////////////////////////////////////////////////////////////////
+
   /* Processing user_attributes table */
   if (tables[0].table) {
     iterator = init_table_iterator(thd, table = tables[0].table, false, false);
@@ -4133,10 +4328,57 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
 
       if(abac_rule_db_hash->count(rule_name))  (*abac_rule_db_hash)[rule_name]->set_db(db_name);
       else if(abac_rule_db_proc_hash->count(rule_name)) (*abac_rule_db_proc_hash)[rule_name]->set_db(db_name);
+
+      if(!abac_tree->count(db_name)) {
+        ABAC_TREE_NODE *db_abac_tree = new ABAC_TREE_NODE();
+        abac_tree->emplace(db_name, db_abac_tree);
+      }
+      ABAC_RULE *abac_rule = new ABAC_RULE();
+      abac_rule->set_rule_name(rule_name);
+
+      if(abac_rule_db_hash->count(rule_name))  {
+        abac_rule->set_access((*abac_rule_db_hash)[rule_name]->access);
+        abac_rule->set_weekday((*abac_rule_db_hash)[rule_name]->weekday);
+        abac_rule->set_daytime((*abac_rule_db_hash)[rule_name]->daytime);
+        abac_rule->user_attrib_map = (*abac_rule_db_hash)[rule_name]->user_attrib_map;
+      }
+      else if(abac_rule_db_proc_hash->count(rule_name)) {
+        abac_rule->set_access((*abac_rule_db_proc_hash)[rule_name]->access);
+        abac_rule->set_weekday((*abac_rule_db_proc_hash)[rule_name]->weekday);
+        abac_rule->set_daytime((*abac_rule_db_proc_hash)[rule_name]->daytime);
+        abac_rule->user_attrib_map = (*abac_rule_db_proc_hash)[rule_name]->user_attrib_map;
+      }
+
+      // abac_db_rules.emplace(rule_name, abac_rule);
+      abac_db_rules[db_name].emplace(rule_name, abac_rule);
     }
     iterator.reset();
     if (read_rec_errcode > 0) goto end;
   }
+
+  DBUG_PRINT("info",
+             ("before adding rules to abac_rules, abac_rule_hash : %d", (int)abac_rule_hash->size()));
+
+  for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
+    // abac_rules.emplace(rule_hash_it->first, rule_hash_it->second);
+    abac_db_rules["global"].emplace(rule_hash_it->first, rule_hash_it->second);
+  }
+  for (auto rule_hash_it = abac_rule_proc_hash->begin(); rule_hash_it != abac_rule_proc_hash->end(); rule_hash_it++) {
+    // abac_rules.emplace(rule_hash_it->first, rule_hash_it->second);
+    abac_db_rules["global"].emplace(rule_hash_it->first, rule_hash_it->second);
+  }
+
+  // build_abac_tree((*abac_tree)["global"], &abac_rules);
+  // if(abac_tree->count("erp")) build_abac_tree((*abac_tree)["erp"], &abac_db_rules);
+  for(auto it = abac_db_rules.begin(); it != abac_db_rules.end(); it ++) {
+    build_abac_tree((*abac_tree)[it->first], &(it->second));
+  }
+
+  // for(auto abac_tree_it = abac_tree->begin(); abac_tree_it != abac_tree->end(); abac_tree_it ++) {
+  //   build_abac_tree(abac_tree_it->second, &)
+  // }
+
+
 
   // for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
   //   for (auto user_hash_it = acl_user_abac_hash->begin(); 
@@ -4382,6 +4624,8 @@ void abac_free() {
   user_attribute_set = nullptr;
   delete object_attribute_set;
   object_attribute_set = nullptr;
+  delete abac_tree;
+  abac_tree = nullptr;
   abac_memory.Clear();
 }
 bool abac_init(bool skip_abac_tables = false) {
@@ -4429,6 +4673,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   malloc_unordered_map<string, ABAC_RULE_DB*> *old_abac_rule_db_proc_hash = nullptr;
   malloc_unordered_set<string> *old_user_attribute_set = nullptr;
   malloc_unordered_set<string> *old_object_attribute_set = nullptr;
+  malloc_unordered_map<string, ABAC_TREE_NODE*> *old_abac_tree = nullptr;
   DBUG_TRACE;
 
   /* Don't do anything if running with --skip-grant-tables */
@@ -4493,6 +4738,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   old_abac_rule_db_proc_hash = abac_rule_db_proc_hash;
   old_user_attribute_set  = user_attribute_set;
   old_object_attribute_set = object_attribute_set;
+  old_abac_tree = abac_tree;
   old_mem = move(abac_memory);
 
   abac_object_hash = new malloc_unordered_map<string, ABAC_OBJECT*>(key_memory_acl_memex);
@@ -4506,6 +4752,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
   acl_user_abac_hash = new malloc_unordered_map<string, ACL_USER_ABAC*>(key_memory_acl_memex);
   user_attribute_set = new malloc_unordered_set<string>(key_memory_acl_memex);
   object_attribute_set = new malloc_unordered_set<string>(key_memory_acl_memex);
+  abac_tree = new malloc_unordered_map<string, ABAC_TREE_NODE*>(key_memory_acl_memex);
 
   if ((return_val = abac_load(thd, tables))) {
     abac_free();
@@ -4520,6 +4767,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
     acl_user_abac_hash = old_acl_user_abac_hash;
     user_attribute_set = old_user_attribute_set;
     object_attribute_set = old_object_attribute_set;
+    abac_tree = old_abac_tree;
     abac_memory = move(old_mem);
   } else {
     delete old_abac_object_hash;
@@ -4533,6 +4781,7 @@ bool abac_reload(THD *thd, bool mdl_locked) {
     delete old_acl_user_abac_hash;
     delete old_user_attribute_set;
     delete old_object_attribute_set;
+    delete old_abac_tree;
     old_mem.Clear();
   }
 

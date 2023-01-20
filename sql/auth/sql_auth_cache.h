@@ -409,6 +409,15 @@ class ABAC_RULE_DB {
     std::string get_user_attribute_value(std::string attrib);
 };
 
+class ABAC_TREE_NODE {
+  public:
+    int access;
+    std::string attrib_name;
+    std::string attrib_val;
+    ABAC_TREE_NODE* left;
+    ABAC_TREE_NODE* right;
+};
+
 class ACL_PROXY_USER : public ACL_ACCESS {
   const char *user;
   ACL_HOST_AND_IP proxied_host;
@@ -593,6 +602,7 @@ extern malloc_unordered_map<std::string, ABAC_RULE_DB*> *abac_rule_db_hash;
 extern malloc_unordered_map<std::string, ABAC_RULE_DB*> *abac_rule_db_proc_hash;
 extern malloc_unordered_set<std::string> *user_attribute_set;
 extern malloc_unordered_set<std::string> *object_attribute_set;
+extern malloc_unordered_map<std::string, ABAC_TREE_NODE*> *abac_tree;
 
 extern std::unique_ptr<malloc_unordered_multimap<
     std::string, unique_ptr_destroy_only<GRANT_TABLE>>>
