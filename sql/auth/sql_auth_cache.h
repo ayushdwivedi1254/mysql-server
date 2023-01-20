@@ -413,9 +413,7 @@ class ABAC_TREE_NODE {
   public:
     int access;
     std::string attrib_name;
-    std::string attrib_val;
-    ABAC_TREE_NODE* left;
-    ABAC_TREE_NODE* right;
+    std::unordered_map<std::string, ABAC_TREE_NODE*> childs;
 };
 
 class ACL_PROXY_USER : public ACL_ACCESS {

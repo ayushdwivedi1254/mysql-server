@@ -3912,14 +3912,12 @@ bool assert_acl_cache_write_lock(THD *thd) {
                                                       "", MDL_EXCLUSIVE);
 }
 
-void build_abac_tree(ABAC_TREE_NODE* root, std::unordered_map<std::string, ABAC_RULE*> *abac_rules) {
-  std::unordered_map<std::string, int> freq_attrib_map;
-  int max_freq = 0;
-  std::string max_freq_key;
-  std::string attrib_name, attrib_val;
 
-  // DBUG_PRINT("info",
-  //   ("before building tree, root : %d    abac_rules : %d", root == nullptr, abac_rules == nullptr));
+void build_abac_pol_tree(ABAC_TREE_NODE* root, std::unordered_map<std::string, ABAC_RULE*> *abac_rules) {
+  std::unordered_map<std::string, std::unordered_map<std::string, int> > freq_attrib_map; // attrib_name, attrib_val, frequency
+
+  DBUG_PRINT("info",
+    ("IN: before building tree, root : %d    abac_rules : %d", root == nullptr, abac_rules == nullptr));
   if(abac_rules == nullptr) return;
   // if(root != nullptr) return;
 
@@ -3928,70 +3926,54 @@ void build_abac_tree(ABAC_TREE_NODE* root, std::unordered_map<std::string, ABAC_
     object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
 
     for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-      std::string key = user_map_it->first;
-      key.push_back(':');
-      key.append(user_map_it->second);
-
-      freq_attrib_map[key] ++;
-
-      if(max_freq < freq_attrib_map[key] ) {
-        max_freq = freq_attrib_map[key];
-        max_freq_key = key;
-        attrib_name = user_map_it->first;
-        attrib_val = user_map_it->second;
-      }
+      freq_attrib_map[user_map_it->first][user_map_it->second]++;
     }
-
     for (auto object_map_it = object_map.begin(); object_map_it != object_map.end(); object_map_it++) {
-      std::string key = object_map_it->first;
-      key.push_back(':');
-      key.append(object_map_it->second);
-
-      freq_attrib_map[key] ++;
-
-      if(max_freq < freq_attrib_map[key] ) {
-        max_freq = freq_attrib_map[key];
-        max_freq_key = key;
-        attrib_name = object_map_it->first;
-        attrib_val = object_map_it->second;
-      }
+      freq_attrib_map[object_map_it->first][object_map_it->second]++;
     }
 
     if(rule_hash_it->second->weekday != -1) {
       std::string k1 = "weekday";
-      k1.push_back(':');
-      k1.append((rule_hash_it->second->weekday?"weekday":"weekend"));
-  
-      freq_attrib_map[k1] ++;
-  
-      if(max_freq < freq_attrib_map[k1] ) {
-        max_freq = freq_attrib_map[k1];
-        max_freq_key = k1;
-        attrib_name = "weekday";
-        attrib_val = (rule_hash_it->second->weekday?"weekday":"weekend");
-      }
+      std::string k2 = (rule_hash_it->second->weekday?"weekday":"weekend");
+      freq_attrib_map[k1][k2] ++;
     }
 
     if(rule_hash_it->second->daytime != -1) {
-      std::string k2 = "daytime";
-      k2.push_back(':');
-      k2.append((rule_hash_it->second->daytime?"day":"night"));
-  
-  
-      freq_attrib_map[k2] ++;
-  
-      if(max_freq < freq_attrib_map[k2] ) {
-        max_freq = freq_attrib_map[k2];
-        max_freq_key = k2;
-        attrib_name = "daytime";
-        attrib_val = (rule_hash_it->second->daytime?"day":"night");
-      }
+      std::string k1 = "daytime";
+      std::string k2 = (rule_hash_it->second->weekday?"day":"night");
+      freq_attrib_map[k1][k2] ++;
     }
   }
 
-  std::unordered_map<std::string, ABAC_RULE*> abac_rules_left;
-  std::unordered_map<std::string, ABAC_RULE*> abac_rules_right;
-  
+  double max_entropy = -1;
+  std::string attrib_name;
+
+  // std::unordered_map<std::string, double> entropy_attrib;
+  for(auto it = freq_attrib_map.begin(); it != freq_attrib_map.end(); it++) {
+    double entropy = 0;
+    int total = 0;
+
+    std:: unordered_map<std::string, int> map = it->second;
+    for(auto val_it = map.begin(); val_it != map.end(); val_it ++) {
+      total += val_it->second;
+    }
+
+    for(auto val_it = map.begin(); val_it != map.end(); val_it ++) {
+      double p_x = (double) val_it->second/total;
+      if (p_x>0) entropy-=p_x*log2(p_x);
+    }
+    // entropy_attrib[it->first] = entropy;
+    if(max_entropy < entropy) {
+      max_entropy = entropy;
+      attrib_name = it->first;
+    }
+  }
+
+
+  DBUG_PRINT("info",
+    ("IN: before building tree, attrib_name : %s", attrib_name.c_str()));
+
+  std::unordered_map<std::string, std::unordered_map<std::string, ABAC_RULE*> > child_abac_rules; // attrib_val, rule_name, rule
 
   for (auto rule_hash_it = abac_rules->begin(); rule_hash_it != abac_rules->end(); rule_hash_it++) {
     user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
@@ -3999,95 +3981,94 @@ void build_abac_tree(ABAC_TREE_NODE* root, std::unordered_map<std::string, ABAC_
 
     bool check = false;
 
-    if(user_map.count(attrib_name) && user_map[attrib_name] == attrib_val) {
+    if(user_map.count(attrib_name)) {
       check = true;
-      
+      std::string attrib_val = user_map[attrib_name];
+
       rule_hash_it->second->user_attrib_map.erase(attrib_name);
-      abac_rules_left.emplace(rule_hash_it->first, rule_hash_it->second);
+      child_abac_rules[attrib_val].emplace(rule_hash_it->first, rule_hash_it->second);
     }
 
     if(check) continue;
 
-    if(object_map.count(attrib_name) && object_map[attrib_name] == attrib_val) {
+    if(object_map.count(attrib_name)) {
       check = true;
-      
-      rule_hash_it->second->object_attrib_map.erase(attrib_name);
-      abac_rules_left.emplace(rule_hash_it->first, rule_hash_it->second);
-    }
+      std::string attrib_val = object_map[attrib_name];
 
+      rule_hash_it->second->object_attrib_map.erase(attrib_name);
+      child_abac_rules[attrib_val].emplace(rule_hash_it->first, rule_hash_it->second);
+    }
 
     if(check) continue;
 
     std::string k1 = "weekday";
-    k1.push_back(':');
-    k1.append((rule_hash_it->second->weekday?"weekday":"weekend"));
+    std::string k2 = (rule_hash_it->second->weekday?"weekday":"weekend");
 
-    if(max_freq_key == k1 && rule_hash_it->second->weekday != -1) {
+    if(attrib_name == k1 && rule_hash_it->second->weekday != -1) {
       check = true;
 
       rule_hash_it->second->weekday = -1;
-      abac_rules_left.emplace(rule_hash_it->first, rule_hash_it->second);
+      child_abac_rules[k2].emplace(rule_hash_it->first, rule_hash_it->second);
     }
 
     if(check) continue;
 
+    k1 = "daytime";
+    k2 = (rule_hash_it->second->daytime?"day":"night");
 
-    std::string k2 = "daytime";
-    k2.push_back(':');
-    k2.append((rule_hash_it->second->daytime?"day":"night"));
-
-
-    if(max_freq_key == k2 && rule_hash_it->second->daytime != -1) {
+    if(attrib_name == k1 && rule_hash_it->second->daytime != -1) {
       check = true;
 
       rule_hash_it->second->daytime = -1;
-      abac_rules_left.emplace(rule_hash_it->first, rule_hash_it->second);
+      child_abac_rules[k2].emplace(rule_hash_it->first, rule_hash_it->second);
     }
-
-    if(check) continue;
-
-    if(rule_hash_it->second->weekday != -1 || rule_hash_it->second->daytime != -1 ||
-      rule_hash_it->second->user_attrib_map.size() || rule_hash_it->second->object_attrib_map.size()) 
-        abac_rules_right.emplace(rule_hash_it->first, rule_hash_it->second);
   }
-
-  DBUG_PRINT("info",
-    ("before building tree, max_freq_key : %s, attrib_name: %s, attrib_val: %s, left: %d, right: %d",
-     max_freq_key.c_str(), attrib_name.c_str(), attrib_val.c_str(), (int)abac_rules_left.size(), (int)abac_rules_right.size()));
 
   ABAC_TREE_NODE* node = root;
-
   node->attrib_name = attrib_name;
-  node->attrib_val = attrib_val;
 
-  node->left = new ABAC_TREE_NODE();
+  for(auto it = child_abac_rules.begin(); it != child_abac_rules.end();) {
+    ABAC_TREE_NODE* child_node = new ABAC_TREE_NODE();
+    node->childs.emplace(it->first, child_node);
 
-  bool last = true;
-  int temp_access = 0;
-  for (auto it = abac_rules_left.begin(); it != abac_rules_left.end(); it ++) {
-    if(((int)it->second->user_attrib_map.size() + (int)it->second->object_attrib_map.size() + 
-          ((int)it->second->weekday != -1) + ((int)it->second->daytime != -1)) != 0) 
-          last = false;
-    else temp_access |= it->second->access;
+    DBUG_PRINT("info",
+      ("before building tree, attrib_name : %s, attrib_val: %s, child: %d",
+       attrib_name.c_str(), (it->first).c_str(), (int)(it->second.size())));
+
+    // bool last = true;
+    // int temp_access = 0;
+
+    for (auto rules_it = (it->second).begin(); rules_it != (it->second).end(); ) {
+      DBUG_PRINT("info",
+        ("before building tree, attrib_name : %s, attrib_val: %s, child: %d, rule: %s, user_size: %d, obj_size: %d, weekday: %d, daytime: %d",
+         attrib_name.c_str(), (it->first).c_str(), (int)(it->second.size()), rules_it->first.c_str(), (int)rules_it->second->user_attrib_map.size(), 
+        (int)rules_it->second->object_attrib_map.size(), (int)rules_it->second->weekday, (int)rules_it->second->daytime));
+
+      if(((int)rules_it->second->user_attrib_map.size() == 0 &&  (int)rules_it->second->object_attrib_map.size() == 0 && 
+            ((int)rules_it->second->weekday == -1) && ((int)rules_it->second->daytime == -1))) {
+                    node->childs[(it->first)]->access |= rules_it->second->access;
+                    (it->second).erase(rules_it++);
+                  }
+      else ++rules_it;
+    }
+
+    if((it->second).size() == 0 ) {
+      child_abac_rules.erase(it++);
+      continue;
+    }
+    else {
+      build_abac_pol_tree(node->childs[it->first], &(it->second));
+      ++it;
+    }
+    
+    // if(last) child_node->access = temp_access;
+    // else build_abac_pol_tree(node->childs[it->first], &(it->second));
+
+
   }
 
-  if(last) node->left->access = temp_access;
-  else build_abac_tree(node->left, &abac_rules_left);
-
-  // if(abac_rules_left.size()) {
-  //   auto it = abac_rules_left.begin(); 
-  //   if(((int)it->second->user_attrib_map.size() + (int)it->second->object_attrib_map.size() + 
-  //         ((int)it->second->weekday != -1) + ((int)it->second->daytime != -1)) == 0) 
-  //         node->left->access = it->second->access;
-  //   else build_abac_tree(node->left, &abac_rules_left);
-  // }
-  
-  // if(abac_rules_left.size() > 1) build_abac_tree(node->left, &abac_rules_left);
-
-  node->right = new ABAC_TREE_NODE();
-  if(abac_rules_right.size()) build_abac_tree(node->right, &abac_rules_right);
-
 }
+
 
 bool abac_load(THD *thd, TABLE_LIST *tables) {
   TABLE *table;
@@ -4356,8 +4337,8 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
     if (read_rec_errcode > 0) goto end;
   }
 
-  DBUG_PRINT("info",
-             ("before adding rules to abac_rules, abac_rule_hash : %d", (int)abac_rule_hash->size()));
+  // DBUG_PRINT("info",
+  //            ("before adding rules to abac_rules, abac_rule_hash : %d", (int)abac_rule_hash->size()));
 
   for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
     // abac_rules.emplace(rule_hash_it->first, rule_hash_it->second);
@@ -4371,7 +4352,9 @@ bool abac_load(THD *thd, TABLE_LIST *tables) {
   // build_abac_tree((*abac_tree)["global"], &abac_rules);
   // if(abac_tree->count("erp")) build_abac_tree((*abac_tree)["erp"], &abac_db_rules);
   for(auto it = abac_db_rules.begin(); it != abac_db_rules.end(); it ++) {
-    build_abac_tree((*abac_tree)[it->first], &(it->second));
+      DBUG_PRINT("info",
+                ("before adding rules to abac_rules, abac_rule: %s, abac_rules_db: %d", it->first.c_str(), (int)(it->second.size())));
+    build_abac_pol_tree((*abac_tree)[it->first], &(it->second));
   }
 
   // for(auto abac_tree_it = abac_tree->begin(); abac_tree_it != abac_tree->end(); abac_tree_it ++) {

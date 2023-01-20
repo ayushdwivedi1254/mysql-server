@@ -1805,9 +1805,9 @@ bool lock_tables_precheck(THD *thd, TABLE_LIST *tables) {
 /**
   CREATE TABLE query pre-check.
 
-  @param thd			Thread handler
-  @param tables		Global table list
-  @param create_table	        Table which will be created
+  @param thd      Thread handler
+  @param tables   Global table list
+  @param create_table         Table which will be created
 
   @retval
     false   OK
@@ -1967,9 +1967,9 @@ void err_readonly(THD *thd) {
   Check grants for commands which work only with one table and all other
   tables belonging to subselects or implicitly opened tables.
 
-  @param thd			Thread handler
-  @param privilege		requested privilege
-  @param all_tables		global table list of query
+  @param thd      Thread handler
+  @param privilege    requested privilege
+  @param all_tables   global table list of query
 
   @returns false on success, true on access denied error
 */
@@ -2093,8 +2093,8 @@ bool check_routine_access(THD *thd, ulong want_access, const char *db,
 /**
   Check if the given table has any of the asked privileges
 
-  @param thd		 Thread handler
-  @param want_access	 Bitmap of possible privileges to check for
+  @param thd     Thread handler
+  @param want_access   Bitmap of possible privileges to check for
   @param table The table for which access needs to be validated
   @retval
     0  ok
@@ -2183,6 +2183,63 @@ bool has_partial_view_routine_access(THD *thd, const char *db,
     return true;
 
   return !check_routine_level_acl(thd, db, routine_name, is_proc);
+}
+
+
+int check_access_abac(ABAC_TREE_NODE* root, string user_hash_value, string object_hash_value) {
+  ulong db_access=0;
+  ABAC_TREE_NODE* node = root;
+
+  if(node == nullptr) return 0;
+
+  std:: string node_attrib_name = node->attrib_name;
+
+  DBUG_PRINT("info",
+             ("IN: user_hash_value: %s, node_attrib_name: %s", 
+              user_hash_value.c_str(), node_attrib_name.c_str()));
+  
+  if(node->childs.size() == 0) return node->access;
+
+
+  if(acl_user_abac_hash != nullptr && (acl_user_abac_hash->count(user_hash_value))) {
+    ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
+
+    if (user_hash_it->attrib_map.count(node_attrib_name) && node->childs.count(user_hash_it->get_attribute_value(node_attrib_name)) ) {
+      db_access |= check_access_abac(node->childs[user_hash_it->get_attribute_value(node_attrib_name)], user_hash_value, object_hash_value);
+    }
+  }
+  
+  if(abac_object_hash != nullptr && abac_object_hash->count(object_hash_value)) {
+    ABAC_OBJECT *object_hash_it = (*abac_object_hash)[object_hash_value];
+
+    if (object_hash_it->attrib_map.count(node_attrib_name) && node->childs.count(object_hash_it->get_attribute_value(node_attrib_name)) ) {
+      db_access |= check_access_abac(node->childs[object_hash_it->get_attribute_value(node_attrib_name)], user_hash_value, object_hash_value);
+    }
+  }
+
+  if(node_attrib_name == "weekday") {
+    time_t theTime = time(NULL);
+    struct tm *aTime = localtime(&theTime);
+    int day = aTime->tm_mday;
+
+    if((day != 6 && day != 0) && node->childs.count("weekday")) db_access |= check_access_abac(node->childs["weekday"], user_hash_value, object_hash_value);
+    if((day == 6 || day == 0) && node->childs.count("weekend")) db_access |= check_access_abac(node->childs["weekend"], user_hash_value, object_hash_value);
+  }
+
+  if(node_attrib_name == "daytime") {
+    time_t theTime = time(NULL);
+    struct tm *aTime = localtime(&theTime);
+    int time = aTime->tm_hour;
+
+    if((time<=19 && time>=7) && node->childs.count("day")) db_access |= check_access_abac(node->childs["day"], user_hash_value, object_hash_value);
+    if((time < 7 || time > 19) && node->childs.count("night")) db_access |= check_access_abac(node->childs["night"], user_hash_value, object_hash_value);
+  }
+
+  DBUG_PRINT("info",
+             ("OUT: user_hash_value: %s, node_attrib_name: %s, db_access: %d", 
+              user_hash_value.c_str(), node_attrib_name.c_str(), (int)db_access));
+
+  return db_access;
 }
 
 /**
@@ -2358,300 +2415,20 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
              ("4 db_access: %lu  want_access: %lu", db_access, want_access));
 
 
-  /*
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   */
-    string user_hash_value = sctx->priv_user().str;
-    user_hash_value.push_back('\0');
-    user_hash_value.append(sctx->priv_host().str);
-    user_hash_value.push_back('\0');
+  string user_hash_value = sctx->priv_user().str;
+  user_hash_value.push_back('\0');
+  user_hash_value.append(sctx->priv_host().str);
+  user_hash_value.push_back('\0');
 
-    // ulong db_access=0;
-    ABAC_TREE_NODE* node = (*abac_tree)[string(db)];
-    while(node != nullptr) {
-      std:: string node_attrib_name = node->attrib_name;
-      std:: string node_attrib_val = node->attrib_val;
-      
-      if(node->left == nullptr && node->right == nullptr) db_access |= node->access;
+  ABAC_TREE_NODE* node = (*abac_tree)[string(db)];
+  db_access = check_access_abac(node, user_hash_value, "");
 
-      if(acl_user_abac_hash != nullptr ) {
-        if((acl_user_abac_hash->count(user_hash_value))) {
-          ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-          if (user_hash_it->attrib_map.count(node_attrib_name) && 
-              user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-            node = node->left;
-            continue;
-          }
-        }
-      }
-
-      if(node_attrib_name == "weekday") {
-        time_t theTime = time(NULL);
-        struct tm *aTime = localtime(&theTime);
-        int day = aTime->tm_mday;
-
-        if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-                               (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-          node = node->left;
-          continue;
-        }
-      }
-
-      if(node_attrib_name == "daytime") {
-        time_t theTime = time(NULL);
-        struct tm *aTime = localtime(&theTime);
-        int time = aTime->tm_hour;
-
-        if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-                      (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-          node = node->left;
-          continue;
-        }
-      }
-      node = node -> right;
-    }
-
-    DBUG_PRINT("info",
+  DBUG_PRINT("info",
          ("5 db_access: %lu  want_access: %lu", db_access, want_access));
 
-  // if(abac_rule_db_hash != nullptr)
-  // for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
-  //   bool check1 = true, check2 = true;
 
-  //   // DBUG_PRINT("info",
-  //   //                ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-  //   //                 rule_hash_it->second->access, db_access, want_access));
-
-  //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-  //   // object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-  //   string user_hash_value = sctx->priv_user().str;
-  //   user_hash_value.push_back('\0');
-  //   user_hash_value.append(sctx->priv_host().str);
-  //   user_hash_value.push_back('\0');
-
-  //   if(acl_user_abac_hash != nullptr) 
-  //     if (acl_user_abac_hash->count(user_hash_value)) {
-  //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-  //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-  //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-  //         // DBUG_PRINT("info",
-  //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-  //       }
-  //   }
-
-  //   if(acl_user_abac_hash != nullptr ) {
-  //     if((acl_user_abac_hash->count(user_hash_value))) {
-  //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-  //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-  //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-  //           check1 = false; break;
-  //         }
-  //       }
-  //     }
-  //     else check1 = false;
-  //   }
-  //   else check1 = false;
-
-
-
-  //   string wild_user_hash_value = sctx->priv_user().str;
-  //   wild_user_hash_value.push_back('\0');
-  //   wild_user_hash_value.append("%");
-  //   wild_user_hash_value.push_back('\0');
-
-  //   if(acl_user_abac_hash != nullptr) 
-  //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
-  //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-  //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-  //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-  //         // DBUG_PRINT("info",
-  //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-  //       }
-  //   }
-
-  //   if(acl_user_abac_hash != nullptr ) {
-  //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
-  //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-  //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-  //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-  //           check2 = false; break;
-  //         }
-  //       }
-  //     }
-  //     else check2 = false;
-  //   }
-  //   else check2 = false;
-
-
-  //   bool check = check1 | check2;
-
-  //   if (!check) continue;
-
-  //   if(string(db_name) != rule_hash_it->second->db_name) check = false;
-
-  //   if (!check) continue;
-
-  //   time_t theTime = time(NULL);
-  //   struct tm *aTime = localtime(&theTime);
-  //   int day = aTime->tm_mday;
-  //   int time = aTime->tm_hour;
-
-  //   if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
-  //                          (!rule_hash_it->second->weekday && (day == 6 || day == 0))) {}
-  //   else continue; 
-
-  //   if((rule_hash_it->second->daytime && (time<=19 && time>=7) )|| 
-  //                         (!rule_hash_it->second->daytime && (time < 7 || time > 19))) {}
-  //   else continue;
-
-
-  //   db_access |= rule_hash_it->second->access;
-
-  //   if ((db_access & want_access) == want_access) break;
-  //   DBUG_PRINT("info",
-  //                  ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu   db: %s    curr_db: %s", (rule_hash_it->first).c_str(), 
-  //                   rule_hash_it->second->access, db_access, want_access, db_name.c_str(), (rule_hash_it->second->db_name).c_str()));
-  //  }
-
-
-  // if(abac_rule_db_proc_hash != nullptr)
-  // for (auto rule_hash_it = abac_rule_db_proc_hash->begin(); rule_hash_it != abac_rule_db_proc_hash->end(); rule_hash_it++) {
-  //   bool check1 = true, check2 = true;
-
-  //   // DBUG_PRINT("info",
-  //   //                ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-  //   //                 rule_hash_it->second->access, db_access, want_access));
-
-  //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-  //   // object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-  //   string user_hash_value = sctx->priv_user().str;
-  //   user_hash_value.push_back('\0');
-  //   user_hash_value.append(sctx->priv_host().str);
-  //   user_hash_value.push_back('\0');
-
-  //   if(acl_user_abac_hash != nullptr) 
-  //     if (acl_user_abac_hash->count(user_hash_value)) {
-  //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-  //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-  //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-  //         // DBUG_PRINT("info",
-  //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-  //       }
-  //   }
-
-  //   if(acl_user_abac_hash != nullptr ) {
-  //     if((acl_user_abac_hash->count(user_hash_value))) {
-  //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-  //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-  //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-  //           check1 = false; break;
-  //         }
-  //       }
-  //     }
-  //     else check1 = false;
-  //   }
-  //   else check1 = false;
-
-
-
-  //   string wild_user_hash_value = sctx->priv_user().str;
-  //   wild_user_hash_value.push_back('\0');
-  //   wild_user_hash_value.append("%");
-  //   wild_user_hash_value.push_back('\0');
-
-  //   if(acl_user_abac_hash != nullptr) 
-  //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
-  //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-  //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-  //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-  //         // DBUG_PRINT("info",
-  //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-  //       }
-  //   }
-
-  //   if(acl_user_abac_hash != nullptr ) {
-  //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
-  //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-  //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-  //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-  //           check2 = false; break;
-  //         }
-  //       }
-  //     }
-  //     else check2 = false;
-  //   }
-  //   else check2 = false;
-
-
-  //   bool check = check1 | check2;
-
-  //   if (!check) continue;
-
-  //   if(string(db_name) != rule_hash_it->second->db_name) check = false;
-
-  //   if (!check) continue;
-
-  //   time_t theTime = time(NULL);
-  //   struct tm *aTime = localtime(&theTime);
-  //   int day = aTime->tm_mday;
-  //   int time = aTime->tm_hour;
-
-  //   if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
-  //                          (!rule_hash_it->second->weekday && (day == 6 || day == 0))) {}
-  //   else continue; 
-
-  //   if((rule_hash_it->second->daytime && (time<=19 && time>=7) )|| 
-  //                         (!rule_hash_it->second->daytime && (time < 7 || time > 19))) {}
-  //   else continue;
-
-
-  //   db_access |= rule_hash_it->second->access;
-  //   if ((db_access & want_access) == want_access) break;
-  //   DBUG_PRINT("info",
-  //                  ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu   db: %s    curr_db: %s", (rule_hash_it->first).c_str(), 
-  //                   rule_hash_it->second->access, db_access, want_access, db_name.c_str(), (rule_hash_it->second->db_name).c_str()));
-  //  }
-  //  DBUG_PRINT("info",
-  //            ("5 db_access: %lu  want_access: %lu", db_access, want_access));
-
-
-   /*
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   ######################################################################################################################
-   */
-
-   DBUG_PRINT("info",
-             ("db_access: %lu  want_access: %lu", db_access, want_access));
+  DBUG_PRINT("info",
+            ("db_access: %lu  want_access: %lu", db_access, want_access));
 
   /*
     Save the union of User-table and the intersection between Db-table and
@@ -2698,135 +2475,6 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
 }
 
 
-
-
-
-
-
-
-
-// abac rule in file implementation, iterating through all rules  
-bool check_table_abac_access(THD *thd, 
-  // ulong want_access, 
-  const char *db, const char *tname) {
-  // , ulong *save_priv) {
-  DBUG_TRACE;
-  Security_context *sctx = thd->security_context();
-  // ulong db_access=0;
-
-
-  DBUG_PRINT("info",
-               ("table: %s db: %s  user: %s  host: %s",tname, db, sctx->priv_user().str,
-                       sctx->priv_host().str));
-
-  Acl_cache_lock_guard acl_cache_lock(thd, Acl_cache_lock_mode::READ_MODE);
-  if (!acl_cache_lock.lock(false)) return (true);
-
-
-  if(abac_rule_hash != nullptr)
-  for (auto rule_hash_it = abac_rule_hash->begin(); rule_hash_it != abac_rule_hash->end(); rule_hash_it++) {
-    bool check1 = true, check2 = true;
-
-    user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-    object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-    string user_hash_value = sctx->priv_user().str;
-    user_hash_value.push_back('\0');
-    user_hash_value.append(sctx->priv_host().str);
-    user_hash_value.push_back('\0');
-
-    if(acl_user_abac_hash != nullptr) 
-      if (acl_user_abac_hash->count(user_hash_value)) {
-        ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-        user_attribute_map user_map_2 = user_abac->attrib_map;
-
-        for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-          // DBUG_PRINT("info",
-          //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-        }
-    }
-
-    if(acl_user_abac_hash != nullptr ) {
-      if((acl_user_abac_hash->count(user_hash_value))) {
-        ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-        for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-          if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-            check1 = false; break;
-          }
-        }
-      }
-      else check1 = false;
-    }
-    else check1 = false;
-
-
-
-    string wild_user_hash_value = sctx->priv_user().str;
-    wild_user_hash_value.push_back('\0');
-    wild_user_hash_value.append("%");
-    wild_user_hash_value.push_back('\0');
-
-    if(acl_user_abac_hash != nullptr) 
-      if (acl_user_abac_hash->count(wild_user_hash_value)) {
-        ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-        user_attribute_map user_map_2 = user_abac->attrib_map;
-
-        for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-          // DBUG_PRINT("info",
-          //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-        }
-    }
-
-    if(acl_user_abac_hash != nullptr ) {
-      if((acl_user_abac_hash->count(wild_user_hash_value))) {
-        ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-        for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-          if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-            check2 = false; break;
-          }
-        }
-      }
-      else check2 = false;
-    }
-    else check2 = false;
-
-
-    bool check = check1 | check2;
-
-    if(!check) continue;
-
-    string tname_hash_value = string(db);
-    tname_hash_value.push_back('\0');
-    tname_hash_value.append(string(tname));
-    tname_hash_value.push_back('\0');
-
-    
-    check = true;
-    if(abac_object_hash != nullptr ) {
-      if((abac_object_hash->count(tname_hash_value)) ) {
-        ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
-        for (auto object_map_it = object_map.begin(); 
-            object_map_it != object_map.end(); object_map_it++) {
-          if (object_map_it->second != object_hash_it->get_attribute_value(object_map_it->first)) {
-            check = false; break;
-          }
-        }
-      }
-      else check = false;
-    }
-    else check = false;
-    if (!check) continue;
-
-    // *save_priv |= rule_hash_it->second->access;
-  }
-
-  acl_cache_lock.unlock();
-
-
-  return true;
-}
 
 /**
   @brief Check if the requested privileges exists in either User-, DB- or,
@@ -4181,22 +3829,7 @@ bool mysql_grant(THD *thd, const char *db, List<LEX_USER> &list, ulong rights,
   return error;
 }
 
-// // Function to search for key in abac_table_priv_hash map
-// GRANT_TABLE *abac_table_search(std::string user, 
-//     std::string db_name, std::string table_name) {
-//   std::string key;
-//   key.append(user);
-//   key.push_back('\0');
-//   key.append(db_name);
-//   key.push_back('\0');
-//   key.append(table_name);
-//   key.push_back('\0');
-//   GRANT_TABLE *found = nullptr;
-//   if (abac_table_priv_hash->count(key)) {
-//     found = (*abac_table_priv_hash)[key];
-//   }
-//   return found;
-// }
+
 
 /**
   @brief Check table level grants
@@ -4357,119 +3990,27 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
           sctx->host().str, sctx->ip().str, db_name, sctx->priv_user().str,
           t_ref->get_table_name(), false);
 
-      // GRANT_TABLE *abac_grant = abac_table_search(std::string(sctx->priv_user().str),
-      //            std::string(db_name), std::string(t_ref->get_table_name()));
 
-      //  yha change krna h
+      string user_hash_value = sctx->priv_user().str;
+      user_hash_value.push_back('\0');
+      user_hash_value.append(sctx->priv_host().str);
+      user_hash_value.push_back('\0');
 
-      /*
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-      */
+      string tname_hash_value = std::string(db_name);
+      tname_hash_value.push_back('\0');
+      tname_hash_value.append(string(t_ref->get_table_name()));
+      tname_hash_value.push_back('\0');
 
-        string user_hash_value = sctx->priv_user().str;
-        user_hash_value.push_back('\0');
-        user_hash_value.append(sctx->priv_host().str);
-        user_hash_value.push_back('\0');
+      ulong db_access=0;
+      ABAC_TREE_NODE* node = (*abac_tree)["global"];
+      db_access = check_access_abac(node, user_hash_value, tname_hash_value);
 
-        string tname_hash_value = std::string(db_name);
-        tname_hash_value.push_back('\0');
-        tname_hash_value.append(string(t_ref->get_table_name()));
-        tname_hash_value.push_back('\0');
+      GRANT_TABLE *abac_grant = nullptr;
 
-        ulong db_access=0;
-        ABAC_TREE_NODE* node = (*abac_tree)["global"];
-        while(node != nullptr) {
-          std:: string node_attrib_name = node->attrib_name;
-          std:: string node_attrib_val = node->attrib_val;
-
-
-          DBUG_PRINT("info",
-                   ("attrib_name: %s, attrib_val: %s, access: %d",
-                    node_attrib_name.c_str(), node_attrib_val.c_str(), (int)node->access));
-          
-          if(node->left == nullptr && node->right == nullptr) db_access = node->access;
-
-          if(user_attribute_set != nullptr && user_attribute_set->count(node_attrib_name)) {
-            if(acl_user_abac_hash != nullptr ) {
-              if((acl_user_abac_hash->count(user_hash_value))) {
-                ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-                if (user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-                  node = node->left;
-                  continue;
-                }
-              }
-            }
-          }
-
-          if(object_attribute_set != nullptr && object_attribute_set->count(node_attrib_name) ) {
-            if(abac_object_hash != nullptr ) {
-              if((abac_object_hash->count(tname_hash_value)) ) {
-                ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
-
-                if (object_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-                  node = node->left;
-                  continue;
-                }
-              }
-            }
-          }
-
-          if(node_attrib_name == "weekday") {
-            time_t theTime = time(NULL);
-            struct tm *aTime = localtime(&theTime);
-            int day = aTime->tm_mday;
-
-            if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-                                   (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-              node = node->left;
-              continue;
-            }
-          }
-
-          if(node_attrib_name == "daytime") {
-            time_t theTime = time(NULL);
-            struct tm *aTime = localtime(&theTime);
-            int time = aTime->tm_hour;
-
-            if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-                          (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-              node = node->left;
-              continue;
-            }
-          }
-          node = node -> right;
-        }
-
-        GRANT_TABLE *abac_grant = nullptr;
-
-        if(db_access) {
-          abac_grant = new GRANT_TABLE(sctx->priv_host().str, db_name, 
-                          sctx->priv_user().str, t_ref->get_table_name(), db_access, 0);
-        }
-      /*
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-       ######################################################################################################################
-      */  
+      if(db_access) {
+        abac_grant = new GRANT_TABLE(sctx->priv_host().str, db_name, 
+                        sctx->priv_user().str, t_ref->get_table_name(), db_access, 0);
+      }
 
 
       if (!grant_table && !abac_grant) {
@@ -4843,28 +4384,28 @@ int check_grant_db_abac(ABAC_TREE_NODE* root, string user_hash_value, string db)
   if(node == nullptr) return 0;
 
   std:: string node_attrib_name = node->attrib_name;
-  std:: string node_attrib_val = node->attrib_val;
 
   DBUG_PRINT("info",
-             ("IN: user_hash_value: %s, db: %s, node_attrib_name: %s, node_attrib_val: %s", 
-              user_hash_value.c_str(), db.c_str(), node_attrib_name.c_str(), node_attrib_val.c_str()));
+             ("IN: user_hash_value: %s, db: %s, node_attrib_name: %s", 
+              user_hash_value.c_str(), db.c_str(), node_attrib_name.c_str()));
   
-  if(node->left == nullptr && node->right == nullptr) db_access |= node->access;
+  if(node->childs.size() == 0) db_access |= node->access;
 
 
   if(acl_user_abac_hash != nullptr && (acl_user_abac_hash->count(user_hash_value))) {
     ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
 
-    if (user_hash_it->attrib_map.count(node_attrib_name) && user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-      db_access |= check_grant_db_abac(node->left, user_hash_value, db);
+    if (user_hash_it->attrib_map.count(node_attrib_name) && node->childs.count(user_hash_it->get_attribute_value(node_attrib_name)) ) {
+      db_access |= check_grant_db_abac(node->childs[user_hash_it->get_attribute_value(node_attrib_name)], user_hash_value, db);
+      if(db_access) return db_access;
     }
   }
   
   if(object_attribute_set != nullptr && object_attribute_set->count(node_attrib_name) &&
                 abac_object_hash != nullptr) {
     for (auto it = abac_object_hash->begin(); it != abac_object_hash->end(); it++) {
-      if (it->second->db_name == db &&  it->second->attrib_map.count(node_attrib_name) && it->second->get_attribute_value(node_attrib_name) == node_attrib_val) {
-        db_access |= check_grant_db_abac(node->left, user_hash_value, db);
+      if (it->second->db_name == db &&  it->second->attrib_map.count(node_attrib_name) && node->childs.count(it->second->get_attribute_value(node_attrib_name))) {
+        db_access |= check_grant_db_abac(node->childs[it->second->get_attribute_value(node_attrib_name)], user_hash_value, db);
         if(db_access) return db_access;
       }
     }
@@ -4875,10 +4416,9 @@ int check_grant_db_abac(ABAC_TREE_NODE* root, string user_hash_value, string db)
     struct tm *aTime = localtime(&theTime);
     int day = aTime->tm_mday;
 
-    if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-                           (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-      db_access |= check_grant_db_abac(node->left, user_hash_value, db);
-    }
+    if((day != 6 && day != 0) && node->childs.count("weekday")) db_access |= check_grant_db_abac(node->childs["weekday"], user_hash_value, db);
+    if((day == 6 || day == 0) && node->childs.count("weekend")) db_access |= check_grant_db_abac(node->childs["weekend"], user_hash_value, db);
+    if(db_access) return db_access;
   }
 
   if(node_attrib_name == "daytime") {
@@ -4886,16 +4426,14 @@ int check_grant_db_abac(ABAC_TREE_NODE* root, string user_hash_value, string db)
     struct tm *aTime = localtime(&theTime);
     int time = aTime->tm_hour;
 
-    if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-                  (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-      db_access |= check_grant_db_abac(node->left, user_hash_value, db);
-    }
+    if((time<=19 && time>=7) && node->childs.count("day")) db_access |= check_grant_db_abac(node->childs["day"], user_hash_value, db);
+    if((time < 7 || time > 19) && node->childs.count("night")) db_access |= check_grant_db_abac(node->childs["night"], user_hash_value, db);
+    if(db_access) return db_access;
   }
-  db_access |= check_grant_db_abac(node->right, user_hash_value, db);
 
   DBUG_PRINT("info",
-             ("OUT: user_hash_value: %s, db: %s, node_attrib_name: %s, node_attrib_val: %s, db_access: %d", 
-              user_hash_value.c_str(), db.c_str(), node_attrib_name.c_str(), node_attrib_val.c_str(), (int)db_access));
+             ("OUT: user_hash_value: %s, db: %s, node_attrib_name: %s, db_access: %d", 
+              user_hash_value.c_str(), db.c_str(), node_attrib_name.c_str(), (int)db_access));
 
   return db_access;
 }
@@ -4944,267 +4482,25 @@ bool check_grant_db(THD *thd, const char *db) {
       break;
     }
   }
-  //Add code here
-  // for (auto key_and_value : *abac_table_priv_hash) {
-  //   GRANT_TABLE *grant_table = key_and_value.second;
-  //   if (grant_table->hash_key.compare(0, key.size(), key) == 0 &&
-  //       grant_table->host.compare_hostname(sctx->host().str, sctx->ip().str) &&
-  //       ((grant_table->privs | grant_table->cols) & TABLE_OP_ACLS)) {
-  //     error = false; /* Found match. */
-  //     DBUG_PRINT("info", ("Detected table level acl in abac_table_priv_hash"));
-  //     break;
-  //   }
-  // }
 
-  //  yha change krna h
-
-  // string user_hash_value = sctx->priv_user().str;
-  // user_hash_value.push_back('\0');
-  // user_hash_value.append(sctx->priv_host().str);
-  // user_hash_value.push_back('\0');
-
-  // string tname_hash_value = string(db);
-  // tname_hash_value.push_back('\0');
-  // tname_hash_value.append(string(tname));
-  // tname_hash_value.push_back('\0');
-
-  // ulong db_access=0;
-  // ABAC_TREE_NODE* node = (*abac_tree)["global"];
-  // while(node != nullptr) {
-  //   std:: string node_attrib_name = node->attrib_name;
-  //   std:: string node_attrib_val = node->attrib_val;
-    
-  //   if(node->left == nullptr && node->right == nullptr) db_access = node->access;
-
-  //   if(user_attribute_set != nullptr && user_attribute_set->count(node_attrib_name)) {
-  //     if(acl_user_abac_hash != nullptr ) {
-  //       if((acl_user_abac_hash->count(user_hash_value))) {
-  //         ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-  //         if (user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-  //           node = node->left;
-  //           continue;
-  //         }
-  //       }
-  //     }
-  //   }
-
-  //   if(object_attribute_set != nullptr && object_attribute_set->count(node_attrib_name) ) {
-  //     if(abac_object_hash != nullptr ) {
-  //       if((abac_object_hash->count(tname_hash_value)) ) {
-  //         ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
-
-  //         if (object_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-  //           node = node->left;
-  //           continue;
-  //         }
-  //       }
-  //     }
-  //   }
-
-  //   if(node_attrib_name == "weekday") {
-  //     time_t theTime = time(NULL);
-  //     struct tm *aTime = localtime(&theTime);
-  //     int day = aTime->tm_mday;
-
-  //     if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-  //                            (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-  //       node = node->left;
-  //       continue;
-  //     }
-  //   }
-
-  //   if(node_attrib_name == "daytime") {
-  //     time_t theTime = time(NULL);
-  //     struct tm *aTime = localtime(&theTime);
-  //     int day = aTime->tm_mday;
-
-  //     if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-  //                   (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-  //       node = node->left;
-  //       continue;
-  //     }
-  //   }
-  //   node = node -> right;
-  // }
-
-  // if(db_access) {
-  //     error = false;
-  //     break;
-  //   }
-
-    string user_hash_value = sctx->priv_user().str;
-    user_hash_value.push_back('\0');
-    user_hash_value.append(sctx->priv_host().str);
-    user_hash_value.push_back('\0');
+  string user_hash_value = sctx->priv_user().str;
+  user_hash_value.push_back('\0');
+  user_hash_value.append(sctx->priv_host().str);
+  user_hash_value.push_back('\0');
 
 
-    ulong db_access=0;
-    ABAC_TREE_NODE* node = (*abac_tree)[string(db)];
-    while(node != nullptr) {
-      std:: string node_attrib_name = node->attrib_name;
-      std:: string node_attrib_val = node->attrib_val;
-      
-      if(node->left == nullptr && node->right == nullptr) db_access = node->access;
+  ulong db_access=0;
+  ABAC_TREE_NODE* node = (*abac_tree)[string(db)];
+  db_access = check_grant_db_abac(node, user_hash_value, string(db));
+  if(db_access) {
+      error = false;
+  }
 
-      if(user_attribute_set != nullptr && user_attribute_set->count(node_attrib_name)) {
-        if(acl_user_abac_hash != nullptr ) {
-          if((acl_user_abac_hash->count(user_hash_value))) {
-            ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-            if (user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-              node = node->left;
-              continue;
-            }
-          }
-        }
-      }
-
-      if(node_attrib_name == "weekday") {
-        time_t theTime = time(NULL);
-        struct tm *aTime = localtime(&theTime);
-        int day = aTime->tm_mday;
-
-        if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-                               (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-          node = node->left;
-          continue;
-        }
-      }
-
-      if(node_attrib_name == "daytime") {
-        time_t theTime = time(NULL);
-        struct tm *aTime = localtime(&theTime);
-        int time = aTime->tm_hour;
-
-        if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-                      (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-          node = node->left;
-          continue;
-        }
-      }
-      node = node -> right;
-    }
-
-    if(db_access) {
-        error = false;
-      }
-
-
-    db_access = check_grant_db_abac((*abac_tree)["global"], user_hash_value, string(db));
-
-    if(db_access) {
-        error = false;
-      }
-
-
-
-
-  // if(abac_rule_db_hash != nullptr)
-  // for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
-  //   bool check1 = true, check2 = true;
-
-  //   // DBUG_PRINT("info",
-  //   //                ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-  //   //                 rule_hash_it->second->access, db_access, want_access));
-
-  //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-  //   // object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-  //   string user_hash_value = sctx->priv_user().str;
-  //   user_hash_value.push_back('\0');
-  //   user_hash_value.append(sctx->priv_host().str);
-  //   user_hash_value.push_back('\0');
-
-  //   if(acl_user_abac_hash != nullptr) 
-  //     if (acl_user_abac_hash->count(user_hash_value)) {
-  //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-  //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-  //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-  //         // DBUG_PRINT("info",
-  //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-  //       }
-  //   }
-
-  //   if(acl_user_abac_hash != nullptr ) {
-  //     if((acl_user_abac_hash->count(user_hash_value))) {
-  //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-  //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-  //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-  //           check1 = false; break;
-  //         }
-  //       }
-  //     }
-  //     else check1 = false;
-  //   }
-  //   else check1 = false;
-
-
-
-  //   string wild_user_hash_value = sctx->priv_user().str;
-  //   wild_user_hash_value.push_back('\0');
-  //   wild_user_hash_value.append("%");
-  //   wild_user_hash_value.push_back('\0');
-
-  //   if(acl_user_abac_hash != nullptr) 
-  //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
-  //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-  //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-  //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-  //         // DBUG_PRINT("info",
-  //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-  //       }
-  //   }
-
-  //   if(acl_user_abac_hash != nullptr ) {
-  //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
-  //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-  //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-  //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-  //           check2 = false; break;
-  //         }
-  //       }
-  //     }
-  //     else check2 = false;
-  //   }
-  //   else check2 = false;
-
-
-  //   bool check = check1 | check2;
-
-  //   if (!check) continue;
-
-  //   if(string(db) != rule_hash_it->second->db_name) check = false;
-
-  //   if (!check) continue;
-
-  //   time_t theTime = time(NULL);
-  //   struct tm *aTime = localtime(&theTime);
-  //   int day = aTime->tm_mday;
-  //   int time = aTime->tm_hour;
-
-  //   if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
-  //                          (!rule_hash_it->second->weekday && (day == 6 || day == 0))) {}
-  //   else continue; 
-
-  //   if((rule_hash_it->second->daytime && (time<=19 && time>=7) )|| 
-  //                         (!rule_hash_it->second->daytime && (time < 7 || time > 19))) {}
-  //   else continue;
-
-
-  //   if(rule_hash_it->second->access) {
-  //     error = false;
-  //     break;
-  //   }
-  //   // DBUG_PRINT("info",
-  //   //                ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-  //   //                 rule_hash_it->second->access, db_access, want_access));
-  //  }
-
+  node = (*abac_tree)["global"];
+  db_access |= check_grant_db_abac(node, user_hash_value, string(db));
+  if(db_access) {
+      error = false;
+  }
 
 
   if (error) {
@@ -5213,248 +4509,12 @@ bool check_grant_db(THD *thd, const char *db) {
     error = check_grant_db_routine(thd, db, proc_priv_hash.get()) &&
             check_grant_db_routine(thd, db, func_priv_hash.get());
 
-    // for (auto key_and_value : *abac_table_proc_priv_hash) {
-    //   GRANT_NAME *item = key_and_value.second;
-
-    //   if (strcmp(item->user, sctx->priv_user().str) == 0 &&
-    //       strcmp(item->db, db) == 0 &&
-    //       item->host.compare_hostname(sctx->host().str, sctx->ip().str)) {
-    //     // return false;
-    //     error = false;
-    //     break;
-    //   }
-    // }
-    
-    //  yha change krna h
-    // if(abac_rule_proc_hash != nullptr)
-    // for (auto rule_hash_it = abac_rule_proc_hash->begin(); rule_hash_it != abac_rule_proc_hash->end(); rule_hash_it++) {
-    //   bool check1 = true, check2 = true;
-
-    //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-    //   object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-    //   string user_hash_value = sctx->priv_user().str;
-    //   user_hash_value.push_back('\0');
-    //   user_hash_value.append(sctx->priv_host().str);
-    //   user_hash_value.push_back('\0');
-
-    //   if(acl_user_abac_hash != nullptr) 
-    //     if (acl_user_abac_hash->count(user_hash_value)) {
-    //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-    //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-    //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-    //         // DBUG_PRINT("info",
-    //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-    //       }
-    //   }
-
-    //   if(acl_user_abac_hash != nullptr ) {
-    //     if((acl_user_abac_hash->count(user_hash_value))) {
-    //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-    //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-    //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-    //           check1 = false; break;
-    //         }
-    //       }
-    //     }
-    //     else check1 = false;
-    //   }
-    //   else check1 = false;
-
-
-
-    //   string wild_user_hash_value = sctx->priv_user().str;
-    //   wild_user_hash_value.push_back('\0');
-    //   wild_user_hash_value.append("%");
-    //   wild_user_hash_value.push_back('\0');
-
-    //   if(acl_user_abac_hash != nullptr) 
-    //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
-    //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-    //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-    //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-    //         // DBUG_PRINT("info",
-    //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-    //       }
-    //   }
-
-    //   if(acl_user_abac_hash != nullptr ) {
-    //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
-    //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-    //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-    //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-    //           check2 = false; break;
-    //         }
-    //       }
-    //     }
-    //     else check2 = false;
-    //   }
-    //   else check2 = false;
-
-    //   bool check = check1 | check2;
-
-    //   if(!check) continue;
-
-    //   for (auto object_hash_it = abac_object_hash->begin(); 
-    //     object_hash_it != abac_object_hash->end(); object_hash_it++) {
-    //     if(object_hash_it->second->db_name != string(db)) continue;
-    //     check = true;
-    //     for (auto object_map_it = object_map.begin(); 
-    //         object_map_it != object_map.end(); object_map_it++) {
-    //       if (object_map_it->second != object_hash_it->second->get_attribute_value(object_map_it->first)) {
-    //         check = false; break;
-    //       }
-    //     }
-    //   }
-
-    //   time_t theTime = time(NULL);
-    //   struct tm *aTime = localtime(&theTime);
-    //   int day = aTime->tm_mday;
-            // int time = aTime->tm_hour;
-
-    //   if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
-    //                          (!rule_hash_it->second->weekday && (day == 6 || day == 0))) {}
-    //   else continue;
-
-    //   if((rule_hash_it->second->daytime && (time<=19 && time>=7) )|| 
-    //                       (!rule_hash_it->second->daytime && (time < 7 || time > 19))) {}
-    //   else continue; 
-      
-    //   if (!check) continue;
-    //     if(rule_hash_it->second->access) {
-    //       error = false;
-    //       break;
-    //     }
-    //   }
-
-
-    // if(abac_rule_db_proc_hash != nullptr)
-    // for (auto rule_hash_it = abac_rule_db_proc_hash->begin(); rule_hash_it != abac_rule_db_proc_hash->end(); rule_hash_it++) {
-    //   bool check1 = true, check2 = true;
-
-    //   // DBUG_PRINT("info",
-    //   //                ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-    //   //                 rule_hash_it->second->access, db_access, want_access));
-
-    //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-    //   // object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-    //   string user_hash_value = sctx->priv_user().str;
-    //   user_hash_value.push_back('\0');
-    //   user_hash_value.append(sctx->priv_host().str);
-    //   user_hash_value.push_back('\0');
-
-    //   if(acl_user_abac_hash != nullptr) 
-    //     if (acl_user_abac_hash->count(user_hash_value)) {
-    //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-    //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-    //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-    //         // DBUG_PRINT("info",
-    //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-    //       }
-    //   }
-
-    //   if(acl_user_abac_hash != nullptr ) {
-    //     if((acl_user_abac_hash->count(user_hash_value))) {
-    //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-    //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-    //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-    //           check1 = false; break;
-    //         }
-    //       }
-    //     }
-    //     else check1 = false;
-    //   }
-    //   else check1 = false;
-
-
-
-    //   string wild_user_hash_value = sctx->priv_user().str;
-    //   wild_user_hash_value.push_back('\0');
-    //   wild_user_hash_value.append("%");
-    //   wild_user_hash_value.push_back('\0');
-
-    //   if(acl_user_abac_hash != nullptr) 
-    //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
-    //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-    //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-    //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-    //         // DBUG_PRINT("info",
-    //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-    //       }
-    //   }
-
-    //   if(acl_user_abac_hash != nullptr ) {
-    //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
-    //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-    //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-    //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-    //           check2 = false; break;
-    //         }
-    //       }
-    //     }
-    //     else check2 = false;
-    //   }
-    //   else check2 = false;
-
-
-    //   bool check = check1 | check2;
-
-    //   if (!check) continue;
-
-    //   if(string(db) != rule_hash_it->second->db_name) check = false;
-
-    //   if (!check) continue;
-
-    //   time_t theTime = time(NULL);
-    //   struct tm *aTime = localtime(&theTime);
-    //   int day = aTime->tm_mday;
-    //   int time = aTime->tm_hour;
-
-    //   if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
-    //                          (!rule_hash_it->second->weekday && (day == 6 || day == 0))) {}
-    //   else continue;
-
-    //   if((rule_hash_it->second->daytime && (time<=19 && time>=7) )|| 
-    //                       (!rule_hash_it->second->daytime && (time < 7 || time > 19))) {}
-    //   else continue; 
-
-    //   if(rule_hash_it->second->access) {
-    //     error = false;
-    //     break;
-    //   }
-    //   // DBUG_PRINT("info",
-    //   //                ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-    //   //                 rule_hash_it->second->access, db_access, want_access));
-    //  }
+ 
   }
 
   return error;
 }
 
-// GRANT_NAME *abac_table_proc_search(std::string user, 
-//     std::string db_name, std::string table_name) {
-//   std::string key;
-//   key.append(user);
-//   key.push_back('\0');
-//   key.append(db_name);
-//   key.push_back('\0');
-//   key.append(table_name);
-//   key.push_back('\0');
-//   GRANT_NAME *found = nullptr;
-//   if (abac_table_proc_priv_hash->count(key)) {
-//     found = (*abac_table_proc_priv_hash)[key];
-//   }
-//   return found;
-// }
 
 /****************************************************************************
   Check routine level grants
@@ -5515,128 +4575,7 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
                             "found %lu",
                             table->db, grant_proc->privs));
       }
-      // if ((grant_proc =
-      //          abac_table_proc_search(std::string(user),
-      //            std::string(table->db), std::string(table->table_name)))) {
-      //   table->grant.privilege |= grant_proc->privs;
-      //   DBUG_PRINT("info", ("Checking for routine acls in %s; "
-      //                       "found %lu",
-      //                       table->db, grant_proc->privs));
-      // }
 
-      //  yha change krna h
-      // if(abac_rule_proc_hash != nullptr)
-      // for (auto rule_hash_it = abac_rule_proc_hash->begin(); rule_hash_it != abac_rule_proc_hash->end(); rule_hash_it++) {
-      //   bool check1 = true, check2 = true;
-
-      //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-      //   object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-      //   string user_hash_value = sctx->priv_user().str;
-      //   user_hash_value.push_back('\0');
-      //   user_hash_value.append(sctx->priv_host().str);
-      //   user_hash_value.push_back('\0');
-
-      //   if(acl_user_abac_hash != nullptr) 
-      //     if (acl_user_abac_hash->count(user_hash_value)) {
-      //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-      //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-      //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-      //         // DBUG_PRINT("info",
-      //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-      //       }
-      //   }
-
-      //   if(acl_user_abac_hash != nullptr ) {
-      //     if((acl_user_abac_hash->count(user_hash_value))) {
-      //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-      //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-      //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-      //           check1 = false; break;
-      //         }
-      //       }
-      //     }
-      //     else check1 = false;
-      //   }
-      //   else check1 = false;
-
-
-
-      //   string wild_user_hash_value = sctx->priv_user().str;
-      //   wild_user_hash_value.push_back('\0');
-      //   wild_user_hash_value.append("%");
-      //   wild_user_hash_value.push_back('\0');
-
-      //   if(acl_user_abac_hash != nullptr) 
-      //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
-      //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-      //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-      //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-      //         // DBUG_PRINT("info",
-      //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-      //       }
-      //   }
-
-      //   if(acl_user_abac_hash != nullptr ) {
-      //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
-      //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-      //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-      //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-      //           check2 = false; break;
-      //         }
-      //       }
-      //     }
-      //     else check2 = false;
-      //   }
-      //   else check2 = false;
-
-      //   bool check = check1 | check2;
-
-      //   if(!check) continue;
-
-      //   string tname_hash_value = string(table->db);
-      //   tname_hash_value.push_back('\0');
-      //   tname_hash_value.append(string(table->table_name));
-      //   tname_hash_value.push_back('\0');
-
-        
-      //   check = true;
-      //   if(abac_object_hash != nullptr ) {
-      //     if((abac_object_hash->count(tname_hash_value)) ) {
-      //       ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
-      //       for (auto object_map_it = object_map.begin(); 
-      //           object_map_it != object_map.end(); object_map_it++) {
-      //         if (object_map_it->second != object_hash_it->get_attribute_value(object_map_it->first)) {
-      //           check = false; break;
-      //         }
-      //       }
-      //     }
-      //     else check = false;
-      //   }
-      //   else check = false;
-      //   if (!check) continue;
-
-      //   time_t theTime = time(NULL);
-      //   struct tm *aTime = localtime(&theTime);
-      //   int day = aTime->tm_mday;
-      // int time = aTime->tm_hour;
-
-      //   if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
-      //                          (!rule_hash_it->second->weekday && (day == 6 || day == 0))) {}
-      //   else continue;
-        
-      //   if((rule_hash_it->second->daytime && (time<=19 && time>=7) )|| 
-      //                     (!rule_hash_it->second->daytime && (time < 7 || time > 19))) {}
-      //   else continue;
-        
-      //   table->grant.privilege |= rule_hash_it->second->access;
-
-      //   if ((table->grant.privilege & want_access) == want_access) break;
-      // }
       string user_hash_value = sctx->priv_user().str;
       user_hash_value.push_back('\0');
       user_hash_value.append(sctx->priv_host().str);
@@ -5649,219 +4588,13 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
 
       ulong db_access=0;
       ABAC_TREE_NODE* node = (*abac_tree)["global"];
-      while(node != nullptr) {
-        std:: string node_attrib_name = node->attrib_name;
-        std:: string node_attrib_val = node->attrib_val;
-        
-        if(node->left == nullptr && node->right == nullptr) db_access = node->access;
+      db_access = check_access_abac(node, user_hash_value, tname_hash_value);
 
-        if(user_attribute_set != nullptr && user_attribute_set->count(node_attrib_name)) {
-          if(acl_user_abac_hash != nullptr ) {
-            if((acl_user_abac_hash->count(user_hash_value))) {
-              ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-              if (user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-                node = node->left;
-                continue;
-              }
-            }
-          }
-        }
-
-        if(object_attribute_set != nullptr && object_attribute_set->count(node_attrib_name) ) {
-          if(abac_object_hash != nullptr ) {
-            if((abac_object_hash->count(tname_hash_value)) ) {
-              ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
-
-              if (object_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-                node = node->left;
-                continue;
-              }
-            }
-          }
-        }
-
-        if(node_attrib_name == "weekday") {
-          time_t theTime = time(NULL);
-          struct tm *aTime = localtime(&theTime);
-          int day = aTime->tm_mday;
-
-          if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-                                 (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-            node = node->left;
-            continue;
-          }
-        }
-
-        if(node_attrib_name == "daytime") {
-          time_t theTime = time(NULL);
-          struct tm *aTime = localtime(&theTime);
-          int time = aTime->tm_hour;
-
-          if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-                        (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-            node = node->left;
-            continue;
-          }
-        }
-        node = node -> right;
-      }
-
-      // table->grant.privilege |= db_access;
 
       node = (*abac_tree)[string(table->db)];
-      while(node != nullptr) {
-        std:: string node_attrib_name = node->attrib_name;
-        std:: string node_attrib_val = node->attrib_val;
-        
-        if(node->left == nullptr && node->right == nullptr) db_access |= node->access;
-
-        if(user_attribute_set != nullptr && user_attribute_set->count(node_attrib_name)) {
-          if(acl_user_abac_hash != nullptr ) {
-            if((acl_user_abac_hash->count(user_hash_value))) {
-              ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-              if (user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-                node = node->left;
-                continue;
-              }
-            }
-          }
-        }
-
-        if(node_attrib_name == "weekday") {
-          time_t theTime = time(NULL);
-          struct tm *aTime = localtime(&theTime);
-          int day = aTime->tm_mday;
-
-          if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-                                 (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-            node = node->left;
-            continue;
-          }
-        }
-
-        if(node_attrib_name == "daytime") {
-          time_t theTime = time(NULL);
-          struct tm *aTime = localtime(&theTime);
-          int time = aTime->tm_hour;
-
-          if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-                        (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-            node = node->left;
-            continue;
-          }
-        }
-        node = node -> right;
-      }
+      db_access |= check_access_abac(node, user_hash_value, tname_hash_value);
 
       table->grant.privilege |= db_access;
-
-
-
-      // if(abac_rule_db_proc_hash != nullptr)
-      // for (auto rule_hash_it = abac_rule_db_proc_hash->begin(); rule_hash_it != abac_rule_db_proc_hash->end(); rule_hash_it++) {
-      //   bool check1 = true, check2 = true;
-
-      //   // DBUG_PRINT("info",
-      //   //                ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-      //   //                 rule_hash_it->second->access, db_access, want_access));
-
-      //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-      //   // object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-      //   // string user_hash_value = sctx->priv_user().str;
-      //   // user_hash_value.push_back('\0');
-      //   // user_hash_value.append(sctx->priv_host().str);
-      //   // user_hash_value.push_back('\0');
-
-      //   if(acl_user_abac_hash != nullptr) 
-      //     if (acl_user_abac_hash->count(user_hash_value)) {
-      //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-      //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-      //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-      //         // DBUG_PRINT("info",
-      //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-      //       }
-      //   }
-
-      //   if(acl_user_abac_hash != nullptr ) {
-      //     if((acl_user_abac_hash->count(user_hash_value))) {
-      //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-      //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-      //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-      //           check1 = false; break;
-      //         }
-      //       }
-      //     }
-      //     else check1 = false;
-      //   }
-      //   else check1 = false;
-
-
-
-      //   string wild_user_hash_value = sctx->priv_user().str;
-      //   wild_user_hash_value.push_back('\0');
-      //   wild_user_hash_value.append("%");
-      //   wild_user_hash_value.push_back('\0');
-
-      //   if(acl_user_abac_hash != nullptr) 
-      //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
-      //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-      //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-      //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-      //         // DBUG_PRINT("info",
-      //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-      //       }
-      //   }
-
-      //   if(acl_user_abac_hash != nullptr ) {
-      //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
-      //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-      //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-      //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-      //           check2 = false; break;
-      //         }
-      //       }
-      //     }
-      //     else check2 = false;
-      //   }
-      //   else check2 = false;
-
-
-      //   bool check = check1 | check2;
-
-      //   if (!check) continue;
-
-      //   if(string(table->db) != rule_hash_it->second->db_name) check = false;
-
-      //   if (!check) continue;
-
-      //   time_t theTime = time(NULL);
-      //   struct tm *aTime = localtime(&theTime);
-      //   int day = aTime->tm_mday;
-      //   int time = aTime->tm_hour;
-
-      //   if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
-      //                          (!rule_hash_it->second->weekday && (day == 6 || day == 0))) {}
-      //   else continue;
-
-      //   if((rule_hash_it->second->daytime && (time<=19 && time>=7) )|| 
-      //                     (!rule_hash_it->second->daytime && (time < 7 || time > 19))) {}
-      //   else continue; 
-
-      //   table->grant.privilege |= rule_hash_it->second->access;
-
-      //   if ((table->grant.privilege & want_access) == want_access) break;
-      //   // DBUG_PRINT("info",
-      //   //                ("rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-      //   //                 rule_hash_it->second->access, db_access, want_access));
-      //  }
-
     }
     if ((want_access & table->grant.privilege) != want_access) {
       want_access &= ~table->grant.privilege;
@@ -7031,112 +5764,6 @@ void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
     Acl_cache_lock_guard acl_cache_lock(thd, Acl_cache_lock_mode::READ_MODE);
     if (!acl_cache_lock.lock(false)) return;
 
-
-    //  yha change krna h
-
-    // if(abac_rule_db_hash != nullptr)
-    // for (auto rule_hash_it = abac_rule_db_hash->begin(); rule_hash_it != abac_rule_db_hash->end(); rule_hash_it++) {
-    //   bool check1 = true, check2 = true;
-
-    //   // DBUG_PRINT("info",
-    //   //                ("prior to checking,   rule_hash: %s access: %d   total_access: %lu   want_access: %lu", (rule_hash_it->first).c_str(), 
-    //   //                 rule_hash_it->second->access, db_access, want_access));
-
-    //   user_attribute_map user_map = rule_hash_it->second->user_attrib_map;
-    //   // object_attribute_map object_map = rule_hash_it->second->object_attrib_map;
-
-    //   string user_hash_value = sctx->priv_user().str;
-    //   user_hash_value.push_back('\0');
-    //   user_hash_value.append(sctx->priv_host().str);
-    //   user_hash_value.push_back('\0');
-
-    //   if(acl_user_abac_hash != nullptr) 
-    //     if (acl_user_abac_hash->count(user_hash_value)) {
-    //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[user_hash_value];
-    //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-    //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-    //         // DBUG_PRINT("info",
-    //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-    //       }
-    //   }
-
-    //   if(acl_user_abac_hash != nullptr ) {
-    //     if((acl_user_abac_hash->count(user_hash_value))) {
-    //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-    //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-    //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-    //           check1 = false; break;
-    //         }
-    //       }
-    //     }
-    //     else check1 = false;
-    //   }
-    //   else check1 = false;
-
-
-
-    //   string wild_user_hash_value = sctx->priv_user().str;
-    //   wild_user_hash_value.push_back('\0');
-    //   wild_user_hash_value.append("%");
-    //   wild_user_hash_value.push_back('\0');
-
-    //   if(acl_user_abac_hash != nullptr) 
-    //     if (acl_user_abac_hash->count(wild_user_hash_value)) {
-    //       ACL_USER_ABAC *user_abac = (*acl_user_abac_hash)[wild_user_hash_value];
-    //       user_attribute_map user_map_2 = user_abac->attrib_map;
-
-    //       for(auto user_map_it = user_map_2.begin(); user_map_it != user_map_2.end(); user_map_it++) {
-    //         // DBUG_PRINT("info",
-    //         //          ("attrib_name: %s attrib_value: %s",(user_map_it->first).c_str(), (user_map_it->second).c_str()));
-    //       }
-    //   }
-
-    //   if(acl_user_abac_hash != nullptr ) {
-    //     if((acl_user_abac_hash->count(wild_user_hash_value))) {
-    //       ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[wild_user_hash_value];
-
-    //       for (auto user_map_it = user_map.begin(); user_map_it != user_map.end(); user_map_it++) {
-    //         if (user_hash_it->get_attribute_value(user_map_it->first) != user_map_it->second) {
-    //           check2 = false; break;
-    //         }
-    //       }
-    //     }
-    //     else check2 = false;
-    //   }
-    //   else check2 = false;
-
-
-    //   bool check = check1 | check2;
-
-    //   if (!check) continue;
-
-    //   if(string(db_name) != rule_hash_it->second->db_name) check = false;
-
-    //   if (!check) continue;
-
-    //   time_t theTime = time(NULL);
-    //   struct tm *aTime = localtime(&theTime);
-    //   int day = aTime->tm_mday;
-    //   int time = aTime->tm_hour;
-
-    //   if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
-    //                          (!rule_hash_it->second->weekday && (day == 6 || day == 0))) {}
-    //   else continue; 
-
-    //   if((rule_hash_it->second->daytime && (time<=19 && time>=7) )|| 
-    //                         (!rule_hash_it->second->daytime && (time < 7 || time > 19))) {}
-    //   else continue;
-
-
-    //   grant->privilege |= rule_hash_it->second->access;
-    //   // DBUG_PRINT("info",
-    //   //                ("rule_hash: %s access: %d   total_access: %lu   db: %s    curr_db: %s", (rule_hash_it->first).c_str(), 
-    //   //                 rule_hash_it->second->access, grant->privilege, db_name.c_str(), (rule_hash_it->second->db_name).c_str()));
-    //  }
-
-     
     string user_hash_value = sctx->priv_user().str;
     user_hash_value.push_back('\0');
     user_hash_value.append(sctx->priv_host().str);
@@ -7149,109 +5776,10 @@ void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
 
     ulong db_access=0;
     ABAC_TREE_NODE* node = (*abac_tree)["global"];
-    while(node != nullptr) {
-      std:: string node_attrib_name = node->attrib_name;
-      std:: string node_attrib_val = node->attrib_val;
-      
-      if(node->left == nullptr && node->right == nullptr) db_access = node->access;
-
-      if(user_attribute_set != nullptr && user_attribute_set->count(node_attrib_name)) {
-        if(acl_user_abac_hash != nullptr ) {
-          if((acl_user_abac_hash->count(user_hash_value))) {
-            ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-            if (user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-              node = node->left;
-              continue;
-            }
-          }
-        }
-      }
-
-      if(object_attribute_set != nullptr && object_attribute_set->count(node_attrib_name) ) {
-        if(abac_object_hash != nullptr ) {
-          if((abac_object_hash->count(tname_hash_value)) ) {
-            ABAC_OBJECT *object_hash_it = (*abac_object_hash)[tname_hash_value];
-
-            if (object_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-              node = node->left;
-              continue;
-            }
-          }
-        }
-      }
-
-      if(node_attrib_name == "weekday") {
-        time_t theTime = time(NULL);
-        struct tm *aTime = localtime(&theTime);
-        int day = aTime->tm_mday;
-
-        if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-                               (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-          node = node->left;
-          continue;
-        }
-      }
-
-      if(node_attrib_name == "daytime") {
-        time_t theTime = time(NULL);
-        struct tm *aTime = localtime(&theTime);
-        int time = aTime->tm_hour;
-
-        if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-                      (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-          node = node->left;
-          continue;
-        }
-      }
-      node = node -> right;
-    }
+    db_access = check_access_abac(node, user_hash_value, tname_hash_value);
 
     node = (*abac_tree)[string(db)];
-    while(node != nullptr) {
-      std:: string node_attrib_name = node->attrib_name;
-      std:: string node_attrib_val = node->attrib_val;
-      
-      if(node->left == nullptr && node->right == nullptr) db_access |= node->access;
-
-      if(user_attribute_set != nullptr && user_attribute_set->count(node_attrib_name)) {
-        if(acl_user_abac_hash != nullptr ) {
-          if((acl_user_abac_hash->count(user_hash_value))) {
-            ACL_USER_ABAC *user_hash_it = (*acl_user_abac_hash)[user_hash_value];
-
-            if (user_hash_it->get_attribute_value(node_attrib_name) == node_attrib_val) {
-              node = node->left;
-              continue;
-            }
-          }
-        }
-      }
-
-      if(node_attrib_name == "weekday") {
-        time_t theTime = time(NULL);
-        struct tm *aTime = localtime(&theTime);
-        int day = aTime->tm_mday;
-
-        if(((node_attrib_val == "weekday") && (day != 6 && day != 0)) ||
-                               (!(node_attrib_val == "weekday") && (day == 6 || day == 0))) {
-          node = node->left;
-          continue;
-        }
-      }
-
-      if(node_attrib_name == "daytime") {
-        time_t theTime = time(NULL);
-        struct tm *aTime = localtime(&theTime);
-        int time = aTime->tm_hour;
-
-        if(((node_attrib_val == "day") && (time<=19 && time>=7) )|| 
-                      (!(node_attrib_val == "day") && (time < 7 || time > 19))) {
-          node = node->left;
-          continue;
-        }
-      }
-      node = node -> right;
-    }
+    db_access |= check_access_abac(node, user_hash_value, tname_hash_value);
 
     grant->privilege |= db_access;
 
@@ -7259,12 +5787,6 @@ void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
       grant->grant_table =
           table_hash_search(sctx->host().str, sctx->ip().str, db, priv_user.str,
                             table, false); /* purecov: inspected */
-      // GRANT_TABLE *abac_grant = abac_table_search(std::string(priv_user.str),
-      //            std::string(db), std::string(table));
-      // if(abac_grant != nullptr ) {
-      //   if(grant->grant_table != nullptr) grant->grant_table->privs |= abac_grant->privs;
-      //   else grant->grant_table = abac_grant;
-      // }
             
       grant->version = grant_version;      /* purecov: inspected */
     }
@@ -7617,8 +6139,8 @@ bool is_privileged_user_for_credential_change(THD *thd) {
 /**
   check for global access and give descriptive error message if it fails.
 
-  @param thd			Thread handler
-  @param want_access		Use should have any of these global rights
+  @param thd      Thread handler
+  @param want_access    Use should have any of these global rights
 
   @warning
     One gets access right if one has ANY of the rights in want_access.
@@ -7627,9 +6149,9 @@ bool is_privileged_user_for_credential_change(THD *thd) {
     REPL_CLIENT_ACL rights.
 
   @retval
-    0	ok
+    0 ok
   @retval
-    1	Access denied.  In this case an error is sent to the client
+    1 Access denied.  In this case an error is sent to the client
 */
 
 bool check_global_access(THD *thd, ulong want_access) {
@@ -7655,7 +6177,7 @@ bool check_global_access(THD *thd, ulong want_access) {
   @retval
    false  ok.
   @retval
-   true	  error or access denied. Error is sent to client in this case.
+   true   error or access denied. Error is sent to client in this case.
 */
 bool check_fk_parent_table_access(THD *thd, HA_CREATE_INFO *create_info,
                                   Alter_info *alter_info) {
