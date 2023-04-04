@@ -2422,7 +2422,7 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
 
     time_t theTime = time(NULL);
     struct tm *aTime = localtime(&theTime);
-    int day = aTime->tm_mday;
+    int day = aTime->tm_wday;
     int time = aTime->tm_hour;
 
     if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -2506,7 +2506,7 @@ bool check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
 
     time_t theTime = time(NULL);
     struct tm *aTime = localtime(&theTime);
-    int day = aTime->tm_mday;
+    int day = aTime->tm_wday;
     int time = aTime->tm_hour;
 
     if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -4177,7 +4177,7 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
 
           time_t theTime = time(NULL);
           struct tm *aTime = localtime(&theTime);
-          int day = aTime->tm_mday;
+          int day = aTime->tm_wday;
           int time = aTime->tm_hour;
 
           if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -4691,7 +4691,7 @@ bool check_grant_db(THD *thd, const char *db) {
 
     time_t theTime = time(NULL);
     struct tm *aTime = localtime(&theTime);
-    int day = aTime->tm_mday;
+    int day = aTime->tm_wday;
     int time = aTime->tm_hour;
 
     if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -4774,7 +4774,7 @@ bool check_grant_db(THD *thd, const char *db) {
 
     time_t theTime = time(NULL);
     struct tm *aTime = localtime(&theTime);
-    int day = aTime->tm_mday;
+    int day = aTime->tm_wday;
     int time = aTime->tm_hour;
 
     if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -4882,7 +4882,7 @@ bool check_grant_db(THD *thd, const char *db) {
 
       time_t theTime = time(NULL);
       struct tm *aTime = localtime(&theTime);
-      int day = aTime->tm_mday;
+      int day = aTime->tm_wday;
       int time = aTime->tm_hour;
 
       if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -4965,7 +4965,7 @@ bool check_grant_db(THD *thd, const char *db) {
 
       time_t theTime = time(NULL);
       struct tm *aTime = localtime(&theTime);
-      int day = aTime->tm_mday;
+      int day = aTime->tm_wday;
       int time = aTime->tm_hour;
 
       if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -5134,7 +5134,7 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
 
         time_t theTime = time(NULL);
         struct tm *aTime = localtime(&theTime);
-        int day = aTime->tm_mday;
+        int day = aTime->tm_wday;
         int time = aTime->tm_hour;
 
         if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -5215,7 +5215,7 @@ bool check_grant_routine(THD *thd, ulong want_access, TABLE_LIST *procs,
 
         time_t theTime = time(NULL);
         struct tm *aTime = localtime(&theTime);
-        int day = aTime->tm_mday;
+        int day = aTime->tm_wday;
         int time = aTime->tm_hour;
 
         if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -6470,7 +6470,7 @@ void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
 
       time_t theTime = time(NULL);
       struct tm *aTime = localtime(&theTime);
-      int day = aTime->tm_mday;
+      int day = aTime->tm_wday;
       int time = aTime->tm_hour;
 
       if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
@@ -6568,7 +6568,7 @@ void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
 
         time_t theTime = time(NULL);
         struct tm *aTime = localtime(&theTime);
-        int day = aTime->tm_mday;
+        int day = aTime->tm_wday;
         int time = aTime->tm_hour;
 
         if((rule_hash_it->second->weekday && (day != 6 && day != 0)) ||
