@@ -2220,7 +2220,10 @@ int check_access_abac(ABAC_TREE_NODE* root, string user_hash_value, string objec
   if(node_attrib_name == "weekday") {
     time_t theTime = time(NULL);
     struct tm *aTime = localtime(&theTime);
-    int day = aTime->tm_mday;
+    int day = aTime->tm_wday;
+
+    // DBUG_PRINT("info",
+    //          ("IN: day: %d  time:%d", day, aTime->tm_hour));
 
     if((day != 6 && day != 0) && node->childs.count("weekday")) db_access |= check_access_abac(node->childs["weekday"], user_hash_value, object_hash_value);
     if((day == 6 || day == 0) && node->childs.count("weekend")) db_access |= check_access_abac(node->childs["weekend"], user_hash_value, object_hash_value);
@@ -4414,7 +4417,10 @@ int check_grant_db_abac(ABAC_TREE_NODE* root, string user_hash_value, string db)
   if(node_attrib_name == "weekday") {
     time_t theTime = time(NULL);
     struct tm *aTime = localtime(&theTime);
-    int day = aTime->tm_mday;
+    int day = aTime->tm_wday;
+
+    DBUG_PRINT("info",
+             ("IN: time: %d     day:%d", aTime->tm_hour, day));
 
     if((day != 6 && day != 0) && node->childs.count("weekday")) db_access |= check_grant_db_abac(node->childs["weekday"], user_hash_value, db);
     if((day == 6 || day == 0) && node->childs.count("weekend")) db_access |= check_grant_db_abac(node->childs["weekend"], user_hash_value, db);
