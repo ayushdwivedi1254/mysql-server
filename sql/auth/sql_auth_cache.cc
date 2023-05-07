@@ -3940,7 +3940,7 @@ void build_abac_pol_tree(ABAC_TREE_NODE* root, std::unordered_map<std::string, A
 
     if(rule_hash_it->second->daytime != -1) {
       std::string k1 = "daytime";
-      std::string k2 = (rule_hash_it->second->weekday?"day":"night");
+      std::string k2 = (rule_hash_it->second->daytime?"day":"night");
       freq_attrib_map[k1][k2] ++;
     }
   }
@@ -3961,12 +3961,16 @@ void build_abac_pol_tree(ABAC_TREE_NODE* root, std::unordered_map<std::string, A
     for(auto val_it = map.begin(); val_it != map.end(); val_it ++) {
       double p_x = (double) val_it->second/total;
       if (p_x>0) entropy-=p_x*log2(p_x);
+      DBUG_PRINT("info",
+    ("IN: before building tree, attrib_name : %s, attrib_val: %s, count: %d, entropy: %lf", (it->first).c_str(), (val_it->first).c_str(), (val_it->second), entropy));
     }
     // entropy_attrib[it->first] = entropy;
     if(max_entropy < entropy) {
       max_entropy = entropy;
       attrib_name = it->first;
     }
+    DBUG_PRINT("info",
+    ("IN: before building tree, attrib_name : %s, total: %d, entropy: %lf", (it->first).c_str(), total, entropy));
   }
 
 
