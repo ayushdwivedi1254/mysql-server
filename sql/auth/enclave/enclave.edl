@@ -1,0 +1,47 @@
+enclave {
+
+    // includes required headers (if present at same location as sql_authorization.cpp), otherwise need to create new header
+    // include "wrapper.h"
+
+
+    // define ECALLs
+    trusted {
+
+        public int ecall_check_table_access(
+            [out]   int* result,
+            [in]    THD* thd,
+            [in]    ulong requirements,
+            [in]    TABLE_LIST* tables,
+            [in]    bool any_combination_of_privileges_will_do,
+            [in]    uint number,
+            [in]    bool no_errors
+        );
+
+    };
+
+    // define OCALLs
+    untrusted {
+
+        // 2 ocalls: check_grant, check_access
+
+        public bool ocall_check_access(
+            [in]    THD* thd,
+            [in]    ulong want_access,
+            [in]    const char *db,
+            [in]    ulong *save_priv,
+            [in]    GRANT_INTERNAL_INFO *grant_internal_info,
+            [in]    bool dont_check_global_grants,
+            [in]    bool no_errors
+        );
+
+        public bool check_grant(
+            [in]    THD* thd,
+            [in]    ulong want_access,
+            [in]    TABLE_LIST* tables,
+            [in]    bool any_combination_will_do,
+            [in]    uint number,
+            [in]    bool no_errors
+        );
+
+    };
+};
