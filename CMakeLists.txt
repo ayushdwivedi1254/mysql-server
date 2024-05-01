@@ -116,6 +116,9 @@ FIND_PACKAGE(Git)
 
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 
+# list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+find_package(SGX REQUIRED)
+
 # First, decide about build type (debug or release)
 # If cmake is invoked with -DCMAKE_BUILD_TYPE, 
 # respect user wishes and do not (re)define CMAKE_BUILD_TYPE. If WITH_DEBUG

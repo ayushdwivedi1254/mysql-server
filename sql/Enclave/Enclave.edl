@@ -1,0 +1,58 @@
+/* Enclave.edl - Top EDL file. */
+
+enclave {
+    
+    /* Import ECALL/OCALL from sub-directory EDLs.
+     *  [from]: specifies the location of EDL file. 
+     *  [import]: specifies the functions to import, 
+     *  [*]: implies to import all functions.
+     */
+    
+    trusted {
+        public int addition(int a, int b);
+    };
+
+    /* 
+     * ocall_print_string - invokes OCALL to display string buffer inside the enclave.
+     *  [in]: copy the string buffer to App outside.
+     *  [string]: specifies 'str' is a NULL terminated buffer.
+     */
+    untrusted {
+         
+    };
+
+    /*  int ocall_addition(int a, int b); 
+    void ocall_print_string([in, string] const char *str);
+    */
+
+};
+
+
+
+
+
+
+
+
+// enclave {
+    
+//     /* Import ECALL/OCALL from sub-directory EDLs.
+//      *  [from]: specifies the location of EDL file. 
+//      *  [import]: specifies the functions to import, 
+//      *  [*]: implies to import all functions.
+//      */
+    
+//     trusted {
+//         public int addition();
+//     };
+
+//     /* 
+//      * ocall_print_string - invokes OCALL to display string buffer inside the enclave.
+//      *  [in]: copy the string buffer to App outside.
+//      *  [string]: specifies 'str' is a NULL terminated buffer.
+//      */
+//     untrusted {
+//         void ocall_addition([in, string] const char *str);
+//     };
+
+// };

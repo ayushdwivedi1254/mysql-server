@@ -1042,9 +1042,29 @@ ELSE()
   SET(MYSQLD_SOURCE main.cc)
 ENDIF()
 
-MYSQL_ADD_EXECUTABLE(mysqld
-  ${MYSQLD_SOURCE} DESTINATION ${INSTALL_SBINDIR} COMPONENT Server
-  )
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
+set(EDL_SEARCH_PATHS Enclave)
+
+set(E_SRCS Enclave/Enclave.cpp)
+# set(T_SRCS Enclave/TrustedLibrary/Libcxx.cpp)
+if(SGX_HW AND SGX_MODE STREQUAL "Release")
+    set(LDS Enclave/Enclave.lds)
+else()
+    set(LDS Enclave/Enclave_debug.lds)
+endif()
+# add_trusted_library(trusted_lib SRCS ${T_SRCS} EDL Enclave/Enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
+add_enclave_library(enclave SRCS ${E_SRCS} EDL Enclave/Enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS} LDSCRIPT ${LDS})
+enclave_sign(enclave KEY Enclave/Enclave_Test_Key.pem CONFIG Enclave/Enclave.config.xml)
+
+set(SRCS ${MYSQLD_SOURCE})
+add_untrusted_executable(mysqld SRCS ${SRCS} EDL Enclave/Enclave.edl EDL_SEARCH_PATHS ${EDL_SEARCH_PATHS})
+add_dependencies(mysqld enclave-sign)
+
+# MYSQL_ADD_EXECUTABLE(mysqld
+#   ${MYSQLD_SOURCE} DESTINATION ${INSTALL_SBINDIR} COMPONENT Server
+#   )
+MESSAGE(STATUS "Created mysqld target.")
 
 # We depend on protobuf because of the mysqlx plugin and replication.
 IF(UNIX_INSTALL_RPATH_ORIGIN_PRIV_LIBDIR)
